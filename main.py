@@ -76,6 +76,7 @@ def update_countdown():
         timer.stop()
         status_label.setText("Focus Complete!")
         start_button.setText("Reset to start again!")
+        pause_button.setEnabled(False)
 
 def pause_focus():
     global started_at,elapsed_before_pause
@@ -97,6 +98,36 @@ def pause_focus():
     start_button.setEnabled(True)
     pause_button.setEnabled(False)
 
+def toogle_compact():
+    global is_compact,normal_size
+
+    if not is_compact:
+        normal_size = window.size()
+
+    is_compact = not is_compact
+
+    status_label.setVisible(not is_compact)
+    reset_button.setVisible(not is_compact)
+
+    font = timer_label.font()
+
+    if is_compact:
+        font.setPointSize(28)
+        layout.setContentsMargins(8,8,8,8)
+        layout.setSpacing(4)
+        compact_button.setText("Expand")
+    else:
+        font.setPointSize(40)
+        layout.setContentsMargins(20,20,20,20)
+        layout.setSpacing(12)
+        compact_button.setText("Compact")
+
+    timer_label.setFont(font)
+    layout.activate()
+    if is_compact:
+        window.resize(220,180)
+    else:
+        window.resize(normal_size)
 
 
 
@@ -113,6 +144,8 @@ started_at = None
 focus_duration = 10 #25 * 60 # 60 for seconds
 remaining_seconds = focus_duration
 elapsed_before_pause = 0.0
+is_compact = False
+normal_size = None
 
 app = QApplication(sys.argv)
 
@@ -132,6 +165,7 @@ status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 start_button = QPushButton("Start!")
 reset_button = QPushButton("Reset")
 pause_button = QPushButton("Pause")
+compact_button = QPushButton("Compact")
 
 timer_font = QFont()
 timer_font.setPointSize(40)
@@ -150,6 +184,7 @@ layout.addWidget(timer_label)
 layout.addWidget(start_button)
 layout.addWidget(pause_button)
 layout.addWidget(reset_button)
+layout.addWidget(compact_button)
 
 window.setLayout(layout)
 window.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
@@ -158,6 +193,7 @@ window.setWindowOpacity(0.9)
 start_button.clicked.connect(start_focus)
 reset_button.clicked.connect(reset_focus)
 pause_button.clicked.connect(pause_focus)
+compact_button.clicked.connect(toogle_compact)
 
 window.show()
 sys.exit(app.exec())
