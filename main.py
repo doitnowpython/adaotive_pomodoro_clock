@@ -8,7 +8,13 @@ QVBoxLayout
 )
 import time
 import math
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import (
+    QTimer,
+    Qt
+)
+from PySide6.QtGui import (
+QFont
+)
 
 def start_focus():
     global started_at
@@ -121,13 +127,24 @@ timer.timeout.connect(update_countdown)
 status_label = QLabel("Ready!")
 timer_label = QLabel(format_time(remaining_seconds))
 
+status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
 start_button = QPushButton("Start!")
 reset_button = QPushButton("Reset")
 pause_button = QPushButton("Pause")
 
+timer_font = QFont()
+timer_font.setPointSize(40)
+timer_font.setBold(True)
+
+timer_label.setFont(timer_font)
+timer_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
 pause_button.setEnabled(False)
 
 layout = QVBoxLayout()
+layout.setContentsMargins(20, 20, 20, 20)
+layout.setSpacing(12)
 layout.addWidget(status_label)
 layout.addWidget(timer_label)
 layout.addWidget(start_button)
@@ -135,6 +152,8 @@ layout.addWidget(pause_button)
 layout.addWidget(reset_button)
 
 window.setLayout(layout)
+window.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+window.setWindowOpacity(0.9)
 
 start_button.clicked.connect(start_focus)
 reset_button.clicked.connect(reset_focus)
