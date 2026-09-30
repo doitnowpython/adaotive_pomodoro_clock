@@ -16,30 +16,38 @@ from PySide6.QtCore import (
 from PySide6.QtGui import (
 QFont
 )
+from pip._internal.network import session
+
 
 def start_focus():
     global started_at
 
-    if started_at is not None:
-        return
-
     focus_input.setEnabled(False)
     break_input.setEnabled(False)
+
     started_at = time.monotonic()
-    status_label.setText("Focusing!")
-    start_button.setText("Running")
+
+    if session_type == "focus":
+        status_label.setText("Focusing!")
+        start_button.setText("Focus running")
+    else:
+        status_label.setText("Break time!")
+        start_button.setText("Break running")
+
     start_button.setEnabled(False)
     pause_button.setEnabled(True)
 
-    update_countdown()
     timer.start(100)
+    update_countdown()
 
 def reset_focus():
     global remaining_seconds
     global started_at
     global elapsed_before_pause
+    global session_type
 
     timer.stop()
+    session_type = "focus"
     started_at = None
     elapsed_before_pause = 0.0
     remaining_seconds = focus_duration #restores the full duration
@@ -72,12 +80,13 @@ def update_countdown():
     )
     remaining_seconds = max(
         0,
-        math.ceil(focus_duration - elapsed_seconds)
+        math.ceil(get_session_duration()-elapsed_seconds)
     )
 
     timer_label.setText(format_time(remaining_seconds))
 
     if remaining_seconds == 0 :
+        finish_session()
         timer.stop()
         status_label.setText("Focus Complete!")
         start_button.setText("Reset to start again!")
@@ -89,16 +98,19 @@ def pause_focus():
     if started_at is None:
         return
 
+    previous_session = session_type
     update_countdown()
 
-    if remaining_seconds == 0 :
+    # Updating may have finished the session
+    if session_type != previous_session or started_at is None:
         return
+
 
     elapsed_before_pause += time.monotonic() - started_at
     started_at = None
     timer.stop()
 
-    status_label.setText("Paused!")
+    status_label.setText(f"Paused: {session_type}")
     start_button.setText("Resume!")
     start_button.setEnabled(True)
     pause_button.setEnabled(False)
@@ -149,6 +161,29 @@ def change_break_duration(minutes):
 
     break_duration = minutes * 60
 
+def get_session_duration():
+    if session_type == "focus":
+        return focus_duration
+    return break_duration
+
+def finish_session():
+    global session_type, started_at
+    global elapsed_before_pause, remaining_seconds
+
+    timer.stop()
+
+    if session_type == "focus":
+        session_type = "break"
+
+        started_at = None
+        elapsed_before_pause = 0.0
+        remaining_seconds = break_duration
+
+        timer_label.setText(format_time(remaining_seconds))
+        start_focus()
+    else:
+        reset_focus()
+        status_label.setText("Break complete! Ready for focus.")
 
 print(format_time(1500))
 print(format_time(1000))
@@ -165,6 +200,7 @@ elapsed_before_pause = 0.0
 is_compact = False
 normal_size = None
 break_duration = 7 * 60
+session_type = "focus"
 
 app = QApplication(sys.argv)
 
@@ -216,7 +252,6 @@ layout.addWidget(start_button)
 layout.addWidget(pause_button)
 layout.addWidget(reset_button)
 layout.addWidget(compact_button)
-layout.addWidget(timer_label)
 layout.addWidget(focus_input)
 layout.addWidget(break_input)
 
