@@ -16,11 +16,13 @@ from PySide6.QtCore import (
 from PySide6.QtGui import (
 QFont
 )
-from pip._internal.network import session
 
 
 def start_focus():
     global started_at
+
+    if started_at is None:
+        return 
 
     focus_input.setEnabled(False)
     break_input.setEnabled(False)
@@ -87,10 +89,7 @@ def update_countdown():
 
     if remaining_seconds == 0 :
         finish_session()
-        timer.stop()
-        status_label.setText("Focus Complete!")
-        start_button.setText("Reset to start again!")
-        pause_button.setEnabled(False)
+
 
 def pause_focus():
     global started_at,elapsed_before_pause
