@@ -1,4 +1,5 @@
 import sys
+from pathlib import Path
 from PySide6.QtWidgets import (
 QApplication,
 QWidget,
@@ -11,17 +12,18 @@ import time
 import math
 from PySide6.QtCore import (
     QTimer,
-    Qt
-)
+    Qt,
+    QUrl)
 from PySide6.QtGui import (
-QFont
-)
+    QFont)
+from PySide6.QtMultimedia import (
+    QSoundEffect)
 
 
 def start_focus():
     global started_at
 
-    if started_at is None:
+    if started_at is not None:
         return 
 
     focus_input.setEnabled(False)
@@ -49,6 +51,7 @@ def reset_focus():
     global session_type
 
     timer.stop()
+    QApplication.beep()
     session_type = "focus"
     started_at = None
     elapsed_before_pause = 0.0
@@ -108,6 +111,7 @@ def pause_focus():
     elapsed_before_pause += time.monotonic() - started_at
     started_at = None
     timer.stop()
+    QApplication.beep()
 
     status_label.setText(f"Paused: {session_type}")
     start_button.setText("Resume!")
@@ -170,6 +174,7 @@ def finish_session():
     global elapsed_before_pause, remaining_seconds
 
     timer.stop()
+    session_sound.play()
 
     if session_type == "focus":
         session_type = "break"
@@ -192,6 +197,7 @@ print(format_time(0))
 print(format_time(125))
 
 #focus intials
+sound_path = Path(__file__).resolve().parent / "sound/session_chime.wav"
 started_at = None
 focus_duration = 25 * 60 # 60 for seconds
 remaining_seconds = focus_duration
@@ -206,6 +212,11 @@ app = QApplication(sys.argv)
 window = QWidget()
 window.setWindowTitle("My Focus Clock")
 window.resize(300, 200)
+
+session_sound = QSoundEffect(window)
+session_sound.setSource(QUrl.fromLocalFile(str(sound_path)))
+session_sound.setVolume(0.7)
+session_sound.setLoopCount(1)
 
 timer = QTimer(window)
 timer.timeout.connect(update_countdown)
