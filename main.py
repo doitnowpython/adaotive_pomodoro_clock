@@ -1,13 +1,14 @@
 import sys
 from pathlib import Path
 from PySide6.QtWidgets import (
-QApplication,
-QWidget,
-QLabel,
-QPushButton,
-QVBoxLayout,
-QSpinBox
-)
+    QApplication,
+    QWidget,
+    QLabel,
+    QPushButton,
+    QVBoxLayout,
+    QSpinBox,
+    QSystemTrayIcon,
+    QStyle)
 import time
 import math
 from PySide6.QtCore import (
@@ -15,7 +16,7 @@ from PySide6.QtCore import (
     Qt,
     QUrl)
 from PySide6.QtGui import (
-    QFont)
+    QFont, QIcon)
 from PySide6.QtMultimedia import (
     QSoundEffect)
 
@@ -34,9 +35,11 @@ def start_focus():
     if session_type == "focus":
         status_label.setText("Focusing!")
         start_button.setText("Focus running")
+
     else:
         status_label.setText("Break time!")
         start_button.setText("Break running")
+
 
     start_button.setEnabled(False)
     pause_button.setEnabled(True)
@@ -175,19 +178,47 @@ def finish_session():
 
     timer.stop()
     session_sound.play()
-
+    # Choose the next Session
     if session_type == "focus":
         session_type = "break"
-
-        started_at = None
-        elapsed_before_pause = 0.0
-        remaining_seconds = break_duration
-
-        timer_label.setText(format_time(remaining_seconds))
-        start_focus()
     else:
-        reset_focus()
-        status_label.setText("Break complete! Ready for focus.")
+        session_type = "focus"
+
+    #Give the new session a fresh timing state.
+    started_at = None
+    elapsed_before_pause = 0.0
+    remaining_seconds = get_session_duration()
+
+    timer_label.setText(format_time(remaining_seconds))
+
+    #Automatically start the next session.
+    start_focus()
+
+    if session_type == ("break"):
+        notify_user(
+            "Break started",
+            f"Focus complete! Take a {break_duration //60}-minutes break."
+        )
+    else:
+        notify_user(
+            "Focus started",
+            f"Break complete! Your {focus_duration //60}-minutes focus session has started."
+        )
+
+def notify_user(title, message):
+    if (
+        QSystemTrayIcon.isSystemTrayAvailable()
+        and QSystemTrayIcon.supportsMessages()
+    ):
+        tray_icon.showMessage(
+            title,
+            message,
+            QSystemTrayIcon.MessageIcon.Information,
+        5000
+        )
+    else:
+        print(f"{title}: {message}")
+
 
 print(format_time(1500))
 print(format_time(1000))
@@ -217,6 +248,13 @@ session_sound = QSoundEffect(window)
 session_sound.setSource(QUrl.fromLocalFile(str(sound_path)))
 session_sound.setVolume(0.7)
 session_sound.setLoopCount(1)
+
+tray_icon = QSystemTrayIcon(window)
+tray_icon.setIcon(
+    window.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
+)
+tray_icon.setToolTip("My Focus Clock")
+tray_icon.show()
 
 timer = QTimer(window)
 timer.timeout.connect(update_countdown)
