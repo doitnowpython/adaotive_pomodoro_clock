@@ -8,7 +8,10 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QSpinBox,
     QSystemTrayIcon,
-    QStyle)
+    QStyle,
+    QDialog,
+    QLineEdit,
+    QTextEdit)
 import time
 import math
 from PySide6.QtCore import (
@@ -197,12 +200,14 @@ def finish_session():
     if session_type == ("break"):
         notify_user(
             "Break started",
-            f"Focus complete! Take a {break_duration //60}-minutes break."
+            f"Focus complete! Take a {break_duration //60
+            }-minutes break."
         )
     else:
         notify_user(
             "Focus started",
-            f"Break complete! Your {focus_duration //60}-minutes focus session has started."
+            f"Break complete! Your {focus_duration //60
+            }-minutes focus session has started."
         )
 
 def notify_user(title, message):
@@ -219,7 +224,11 @@ def notify_user(title, message):
     else:
         print(f"{title}: {message}")
 
+def show_work_log():
+    log_window.show()
+    log_window.raise_()
 
+#Simple Time conversion for refference
 print(format_time(1500))
 print(format_time(1000))
 print(format_time(90))
@@ -238,17 +247,21 @@ normal_size = None
 break_duration = 7 * 60
 session_type = "focus"
 
+#app window creation
 app = QApplication(sys.argv)
 
+#app window settings
 window = QWidget()
 window.setWindowTitle("My Focus Clock")
 window.resize(300, 200)
 
+#app siund settings
 session_sound = QSoundEffect(window)
 session_sound.setSource(QUrl.fromLocalFile(str(sound_path)))
 session_sound.setVolume(0.7)
 session_sound.setLoopCount(1)
 
+#app notification settings
 tray_icon = QSystemTrayIcon(window)
 tray_icon.setIcon(
     window.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
@@ -256,10 +269,11 @@ tray_icon.setIcon(
 tray_icon.setToolTip("My Focus Clock")
 tray_icon.show()
 
+#timer settings
 timer = QTimer(window)
 timer.timeout.connect(update_countdown)
 
-
+#timer status settings
 status_label = QLabel("Ready!")
 timer_label = QLabel(format_time(remaining_seconds))
 
@@ -316,4 +330,26 @@ break_input.valueChanged.connect(change_break_duration)
 
 window.show()
 sys.exit(app.exec())
+
+#log window settings
+log_window = QWidget(window)
+fog_window.setWindowTitle("Focus session notes")
+log_window.resize(400,300)
+log_window.setModel(False)
+
+task_name_input = QLineEdit()
+task_name_input.setPlaceholderText("What task were you working on?")
+
+remarks_input = QTextEdit()
+remarks_input.setPlaceholderText(
+    "What did you complete, discover, or leave pending?"
+)
+
+log_layout = QVBoxLayout(log_window)
+log_layout.addWidget(QLabel("Task"))
+log_layout.addWidget(task_name_input)
+log_layout.addWidget(QLabel("Findings and remarks"))
+log_layout.addWidget(remarks_input)
+log_layout.addWidget(QLabel("Draft only - saving will be added next."))
+
 
