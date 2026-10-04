@@ -1,5 +1,7 @@
 import sys
 from pathlib import Path
+import sqlite3
+from contextlib import closing
 from PySide6.QtWidgets import (
     QApplication,
     QWidget,
@@ -136,6 +138,9 @@ def toogle_compact():
     reset_button.setVisible(not is_compact)
     focus_input.setVisible(not is_compact)
     break_input.setVisible(not is_compact)
+    available_time_input.setVisible(not is_compact)
+    preview_plan_button.setVisible(not is_compact)
+    plan_preview.setVisible(not is_compact)
 
     font = timer_label.font()
 
@@ -203,6 +208,7 @@ def finish_session():
             f"Focus complete! Take a {break_duration //60
             }-minutes break."
         )
+        show_work_log()
     else:
         notify_user(
             "Focus started",
@@ -225,8 +231,108 @@ def notify_user(title, message):
         print(f"{title}: {message}")
 
 def show_work_log():
+    print("Opening work log window")
     log_window.show()
     log_window.raise_()
+
+def preview_work_log():
+    task_name = task_name_input.text().strip()
+    remarks = remarks_input.toPlainText().strip()
+
+    if not task_name:
+        log_feedback_label.setText("Please enter a task name")
+        return
+
+    work_log ={
+        "task": task_name,
+        "remarks": remarks
+    }
+
+    print(work_log)
+    log_feedback_label.setText("Preview printed in the console. Not saved yet.")
+
+def save_work_log():
+    task_name = task_name_input.text().strip()
+    remarks = remarks_input.toPlainText().strip()
+
+    if not task_name:
+        log_feedback_label.setText("Please enter a task name.")
+        return
+
+    try:
+        with closing(
+                sqlite3.connect(database_path
+                )) as connection:
+            connection.execute("""
+            CREATE TABLE IF NOT EXISTS work_logs(
+                id INTEGER PRIMARY KEY,
+                task TEXT NOT NULL,
+                remarks TEXT NOT NULL
+                )
+                """)
+            connection.execute(
+                "INSERT INTO work_logs (task, remarks) VALUES (?, ?)",
+                (task_name, remarks)
+            )
+
+            connection.commit()
+
+    except sqlite3.Error as error:
+        log_feedback_label.setText(
+            "Could not save. Your notes are still here."
+        )
+        print("Save error", error)
+
+    log_feedback_label.setText("Work log saved.")
+    task_name_input.clear()
+    remarks_input.clear()
+def build_session_plan(total_minutes, focus_minutes, break_minutes):
+    if total_minutes < 0:
+        raise ValueError("Available time cannot be negative.")
+
+    if focus_minutes <= 0 or break_minutes <= 0:
+        raise ValueError("Focus and break durations must be positive.")
+
+    plan = []
+    remaining_minutes = total_minutes
+
+    while remaining_minutes > 0:
+        #Use a full focus block, or whatever time remaining.
+        current_focus = min(focus_minutes, remaining_minutes)
+
+        plan.append(("focus", current_focus))
+        remaining_minutes -= current_focus
+
+        #Stop if a complete break would leave no time for focus.
+        if remaining_minutes <= break_minutes:
+            break
+
+        plan.append(("break", break_minutes))
+        remaining_minutes -= break_minutes
+
+    return plan
+
+def preview_session_plan():
+    available_minutes = available_time_input.value()
+
+    plan = build_session_plan(
+        available_minutes,
+        focus_input.value(),
+        break_input.value()
+    )
+
+    lines = []
+    planned_minutes = 0
+
+    for session_kind, minutes in plan:
+        lines.append(f"{session_kind.capitalize()}: {minutes} min")
+        planned_minutes += minutes
+
+    unused_minutes = available_minutes - planned_minutes
+    lines.append(f"\nPlanned: {planned_minutes} min")
+    lines.append(f"Unused: {unused_minutes} min")
+
+    plan_preview.setText("\n".join(lines))
 
 #Simple Time conversion for refference
 print(format_time(1500))
@@ -235,6 +341,13 @@ print(format_time(90))
 print(format_time(7))
 print(format_time(0))
 print(format_time(125))
+
+print("90 minutes:", build_session_plan(90,25,7))
+print("50 minutes:", build_session_plan(50,25,7))
+print("20 minutes:", build_session_plan(20,25,7))
+
+#intilzie Database
+database_path = Path(__file__).resolve().parent/"pomodoro.db"
 
 #focus intials
 sound_path = Path(__file__).resolve().parent / "sound/session_chime.wav"
@@ -305,6 +418,17 @@ break_input.setValue(break_duration // 60)
 break_input.setPrefix("Break: ")
 break_input.setSuffix(" min")
 
+available_time_input = QSpinBox()
+available_time_input.setRange(1,1440)
+available_time_input.setValue(90)
+available_time_input.setPrefix("Available: ")
+available_time_input.setSuffix(" min")
+
+preview_plan_button = QPushButton("Preview plan")
+
+plan_preview = QLabel("Your session plan will appear here.")
+plan_preview.setWordWrap(True)
+
 layout = QVBoxLayout()
 layout.setContentsMargins(20, 20, 20, 20)
 layout.setSpacing(12)
@@ -316,26 +440,15 @@ layout.addWidget(reset_button)
 layout.addWidget(compact_button)
 layout.addWidget(focus_input)
 layout.addWidget(break_input)
-
-window.setLayout(layout)
-window.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
-window.setWindowOpacity(0.9)
-
-start_button.clicked.connect(start_focus)
-reset_button.clicked.connect(reset_focus)
-pause_button.clicked.connect(pause_focus)
-compact_button.clicked.connect(toogle_compact)
-focus_input.valueChanged.connect(change_focus_duration)
-break_input.valueChanged.connect(change_break_duration)
-
-window.show()
-sys.exit(app.exec())
+layout.addWidget(available_time_input)
+layout.addWidget(preview_plan_button)
+layout.addWidget(plan_preview)
 
 #log window settings
-log_window = QWidget(window)
-fog_window.setWindowTitle("Focus session notes")
+log_window = QDialog(window)
+log_window.setWindowTitle("Focus session notes")
 log_window.resize(400,300)
-log_window.setModel(False)
+log_window.setModal(False)
 
 task_name_input = QLineEdit()
 task_name_input.setPlaceholderText("What task were you working on?")
@@ -351,5 +464,30 @@ log_layout.addWidget(task_name_input)
 log_layout.addWidget(QLabel("Findings and remarks"))
 log_layout.addWidget(remarks_input)
 log_layout.addWidget(QLabel("Draft only - saving will be added next."))
+
+save_log_button = QPushButton("Save log")
+log_feedback_label = QLabel("")
+
+log_layout.addWidget(save_log_button)
+log_layout.addWidget(log_feedback_label)
+
+save_log_button.clicked.connect(save_work_log)
+
+window.setLayout(layout)
+window.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+window.setWindowOpacity(0.9)
+
+start_button.clicked.connect(start_focus)
+reset_button.clicked.connect(reset_focus)
+pause_button.clicked.connect(pause_focus)
+compact_button.clicked.connect(toogle_compact)
+focus_input.valueChanged.connect(change_focus_duration)
+break_input.valueChanged.connect(change_break_duration)
+preview_plan_button.clicked.connect(preview_session_plan)
+
+window.show()
+sys.exit(app.exec())
+
+
 
 
