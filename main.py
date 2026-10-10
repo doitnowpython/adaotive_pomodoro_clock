@@ -281,7 +281,8 @@ def save_work_log():
         log_feedback_label.setText(
             "Could not save. Your notes are still here."
         )
-        print("Save error", error)
+        print("Save error:", error)
+        return
 
     log_feedback_label.setText("Work log saved.")
     task_name_input.clear()
@@ -359,6 +360,8 @@ is_compact = False
 normal_size = None
 break_duration = 7 * 60
 session_type = "focus"
+active_plan = []
+current_session_index = 0
 
 #app window creation
 app = QApplication(sys.argv)
@@ -463,7 +466,6 @@ log_layout.addWidget(QLabel("Task"))
 log_layout.addWidget(task_name_input)
 log_layout.addWidget(QLabel("Findings and remarks"))
 log_layout.addWidget(remarks_input)
-log_layout.addWidget(QLabel("Draft only - saving will be added next."))
 
 save_log_button = QPushButton("Save log")
 log_feedback_label = QLabel("")
@@ -484,6 +486,7 @@ compact_button.clicked.connect(toogle_compact)
 focus_input.valueChanged.connect(change_focus_duration)
 break_input.valueChanged.connect(change_break_duration)
 preview_plan_button.clicked.connect(preview_session_plan)
+
 
 window.show()
 sys.exit(app.exec())
