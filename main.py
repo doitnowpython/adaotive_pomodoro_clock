@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QStyle,
     QDialog,
     QLineEdit,
-    QTextEdit)
+    QTextEdit, QMessageBox)
 import time
 import math
 from PySide6.QtCore import (
@@ -27,51 +27,111 @@ from PySide6.QtMultimedia import (
 
 
 def start_focus():
-    global started_at
+    global started_at, active_plan, current_session_index
+    global session_type, remaining_seconds
 
     if started_at is not None:
         return 
 
-    focus_input.setEnabled(False)
-    break_input.setEnabled(False)
+# Create the plan only for a fresh start
+    if not active_plan:
+        active_plan = build_session_plan(
+            available_time_input.value(),
+            focus_input.value(),
+            break_input.value()
+        )
+        current_session_index = 0
+        preview_session_plan()
+
+    if not active_plan or current_session_index >= len(active_plan):
+        return
+
+    #Read the CURRENT block, not the first block
+    session_type = active_plan[current_session_index][0]
+
+
+
+    #remaining_seconds = get_session_duration()
+    #preview_session_plan()
+
+    #Do not restart a completed plan without Reset.
+    #if current_session_index >= len(active_plan):
+    #    return
+
+    for widget in (
+        focus_input,
+        break_input,
+        available_time_input,
+        preview_plan_button
+    ):
+        widget.setEnabled(False)
 
     started_at = time.monotonic()
 
-    if session_type == "focus":
-        status_label.setText("Focusing!")
-        start_button.setText("Focus running")
 
-    else:
-        status_label.setText("Break time!")
-        start_button.setText("Break running")
+    total_of_type = sum(
+        kind == session_type
+        for kind,minutes in active_plan
+    )
 
+    current_of_type = sum(
+        kind == session_type
+        for kind,minutes in active_plan[:current_session_index + 1]
+    )
 
+    status_label.setText(
+        f"{session_type.capitalize()} "
+        f"{current_of_type} of {total_of_type}\n\n"
+        f"Total Sessions : {current_session_index + 1}/{len(active_plan)}"
+    )
+
+    start_button.setText(f"{session_type.capitalize()} running")
     start_button.setEnabled(False)
     pause_button.setEnabled(True)
 
+    # Refresh the display whenever a session starts or resumes.
+    if session_type == "focus":
+        session_label.setText("FOCUS - TASK TIME")
+        timer_label.setStyleSheet("color: #FBBF24;")
+    else:
+        session_label.setText("BREAK - REST TIME")
+        timer_label.setStyleSheet("color: #16803C;")
     timer.start(100)
     update_countdown()
 
 def reset_focus():
-    global remaining_seconds
-    global started_at
-    global elapsed_before_pause
-    global session_type
+    global active_plan, current_session_index, session_type
+    global started_at, elapsed_before_pause, remaining_seconds
 
     timer.stop()
-    QApplication.beep()
+
+    active_plan = []
+    current_session_index = 0
     session_type = "focus"
+
     started_at = None
     elapsed_before_pause = 0.0
-    remaining_seconds = focus_duration #restores the full duration
+    remaining_seconds = focus_duration 
 
-    focus_input.setEnabled(True)
-    break_input.setEnabled(True)
+    for widget in (
+       focus_input,
+       break_input,
+       available_time_input,
+       preview_plan_button
+    ):
+       widget.setEnabled(True)
+
     timer_label.setText(format_time(remaining_seconds))
+
+    session_label.setText("FOCUS - READY")
+    timer_label.setStyleSheet("")
+
     status_label.setText("Ready!")
     start_button.setText("Start!")
     start_button.setEnabled(True)
     pause_button.setEnabled(False)
+
+
 
 def format_time(total_seconds):
     # Calculate complete minutes
@@ -120,6 +180,8 @@ def pause_focus():
     started_at = None
     timer.stop()
     QApplication.beep()
+
+    session_label.setText(f"{session_type.upper()} - PAUSED")
 
     status_label.setText(f"Paused: {session_type}")
     start_button.setText("Resume!")
@@ -176,17 +238,58 @@ def change_break_duration(minutes):
     break_duration = minutes * 60
 
 def get_session_duration():
+    if active_plan and current_session_index < len(active_plan):
+        return active_plan[current_session_index][1] * 60
+
     if session_type == "focus":
         return focus_duration
+
     return break_duration
 
 def finish_session():
-    global session_type, started_at
+    global session_type, started_at, current_session_index
     global elapsed_before_pause, remaining_seconds
+
+    finished_type = session_type
 
     timer.stop()
     session_sound.play()
-    # Choose the next Session
+
+    started_at = None
+    elapsed_before_pause = 0.0
+    current_session_index += 1
+
+    if current_session_index >= len(active_plan):
+        remaining_seconds = 0
+        timer_label.setText("00:00")
+        status_label.setText("Hurray Plan Completed!")
+        session_label.setText("Plan Completed")
+        timer_label.setStyleSheet("")
+
+
+        start_button.setText("Reset for a new plan")
+        start_button.setEnabled(False)
+        pause_button.setEnabled(False)
+
+        notify_user(
+            "Plan complete",
+            "Your Planned sessions are finished"
+        )
+    else:
+        session_type = active_plan[current_session_index][0]
+        remaining_seconds = get_session_duration()
+
+        timer_label.setText(format_time(remaining_seconds))
+        start_focus()
+
+        notify_user(
+            f"{session_type.capitalize()} started",
+            f"Next session: {get_session_duration() // 60} minutes."
+        )
+
+    if finished_type == "focus":
+        show_work_log()
+    """    
     if session_type == "focus":
         session_type = "break"
     else:
@@ -214,7 +317,7 @@ def finish_session():
             "Focus started",
             f"Break complete! Your {focus_duration //60
             }-minutes focus session has started."
-        )
+        )"""
 
 def notify_user(title, message):
     if (
@@ -287,6 +390,7 @@ def save_work_log():
     log_feedback_label.setText("Work log saved.")
     task_name_input.clear()
     remarks_input.clear()
+
 def build_session_plan(total_minutes, focus_minutes, break_minutes):
     if total_minutes < 0:
         raise ValueError("Available time cannot be negative.")
@@ -334,6 +438,21 @@ def preview_session_plan():
     lines.append(f"Unused: {unused_minutes} min")
 
     plan_preview.setText("\n".join(lines))
+
+
+def confirm_reset():
+    answer = QMessageBox.question(
+        window,
+        "Reset plan?",
+        "Are you sure you want to reset?\n\n"
+        "This will stop the timer and clear the current plan.\n"
+        "Saved work logs will stay saved.",
+        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        QMessageBox.StandardButton.No
+    )
+
+    if answer == QMessageBox.StandardButton.Yes:
+        reset_focus()
 
 #Simple Time conversion for refference
 print(format_time(1500))
@@ -392,9 +511,13 @@ timer.timeout.connect(update_countdown)
 #timer status settings
 status_label = QLabel("Ready!")
 timer_label = QLabel(format_time(remaining_seconds))
-
 status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
+session_label = QLabel("FOCUS - READY")
+session_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+session_label.setStyleSheet(
+    "font-size: 18px; font-weight: bold;"
+)
 start_button = QPushButton("Start!")
 reset_button = QPushButton("Reset")
 pause_button = QPushButton("Pause")
@@ -435,17 +558,28 @@ plan_preview.setWordWrap(True)
 layout = QVBoxLayout()
 layout.setContentsMargins(20, 20, 20, 20)
 layout.setSpacing(12)
-layout.addWidget(status_label)
+layout.addWidget(session_label)
 layout.addWidget(timer_label)
+layout.addWidget(status_label)
+#layout.addWidget(timer_label)
 layout.addWidget(start_button)
 layout.addWidget(pause_button)
-layout.addWidget(reset_button)
+
 layout.addWidget(compact_button)
 layout.addWidget(focus_input)
 layout.addWidget(break_input)
 layout.addWidget(available_time_input)
 layout.addWidget(preview_plan_button)
 layout.addWidget(plan_preview)
+
+
+#Reset button window
+reset_button.setText("Reset plan")
+layout.addWidget(
+    reset_button,
+    alignment=Qt.AlignmentFlag.AlignRight
+)
+layout.addWidget(reset_button)
 
 #log window settings
 log_window = QDialog(window)
@@ -480,7 +614,7 @@ window.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
 window.setWindowOpacity(0.9)
 
 start_button.clicked.connect(start_focus)
-reset_button.clicked.connect(reset_focus)
+reset_button.clicked.connect(confirm_reset)
 pause_button.clicked.connect(pause_focus)
 compact_button.clicked.connect(toogle_compact)
 focus_input.valueChanged.connect(change_focus_duration)
