@@ -27,6 +27,8 @@ from PySide6.QtGui import (
 from PySide6.QtMultimedia import (
     QSoundEffect)
 
+from database import save_session_record
+import time
 
 def start_focus():
     global started_at, active_plan, current_session_index
@@ -284,6 +286,17 @@ def finish_session(outcome = "completed"):
     print("Session record:", session_record)
 
     timer.stop()
+
+    save_started = time.perf_counter()
+    save_session_id = save_session_record(session_record)
+    print(
+        f"Database save : "
+        f"{(time.perf_counter() - save_started) * 1000:.1f} ms"
+    )
+
+    if save_log_button is not None:
+        print(f"Session saved with ID: {save_session_id}")
+
     session_sound.play()
 
     started_at = None
