@@ -13,7 +13,9 @@ from PySide6.QtWidgets import (
     QStyle,
     QDialog,
     QLineEdit,
-    QTextEdit, QMessageBox)
+    QTextEdit,
+    QMessageBox,
+    QHBoxLayout)
 import time
 import math
 from PySide6.QtCore import (
@@ -200,6 +202,7 @@ def toogle_compact():
 
     status_label.setVisible(not is_compact)
     reset_button.setVisible(not is_compact)
+    skip_button.setVisible(not is_compact)
     focus_input.setVisible(not is_compact)
     break_input.setVisible(not is_compact)
     available_time_input.setVisible(not is_compact)
@@ -248,11 +251,37 @@ def get_session_duration():
 
     return break_duration
 
-def finish_session():
+def finish_session(outcome = "completed"):
     global session_type, started_at, current_session_index
     global elapsed_before_pause, remaining_seconds
 
+    if not active_plan or current_session_index >= len(active_plan):
+        return
+
     finished_type = session_type
+    planned_seconds = get_session_duration()
+
+    #Active time accumulated before the most recent pause.
+    actual_seconds = elapsed_before_pause
+
+    #Add the current running period, if clock is running.
+    if started_at is not None:
+        actual_seconds += time.monotonic() - started_at
+
+    #Timer callbacks can arrive slightly after the deadline.
+    actual_seconds = min(
+        planned_seconds,
+        max(0.0, actual_seconds)
+    )
+
+    session_record = {
+        "session_type": finished_type,
+        "outcome": outcome,
+        "planned_seconds": planned_seconds,
+        "actual_seconds": round(actual_seconds, 2)
+    }
+
+    print("Session record:", session_record)
 
     timer.stop()
     session_sound.play()
@@ -272,6 +301,7 @@ def finish_session():
         start_button.setText("Reset for a new plan")
         start_button.setEnabled(False)
         pause_button.setEnabled(False)
+        skip_button.setEnabled(False)
 
         notify_user(
             "Plan complete",
@@ -291,35 +321,7 @@ def finish_session():
 
     if finished_type == "focus":
         show_work_log()
-    """    
-    if session_type == "focus":
-        session_type = "break"
-    else:
-        session_type = "focus"
 
-    #Give the new session a fresh timing state.
-    started_at = None
-    elapsed_before_pause = 0.0
-    remaining_seconds = get_session_duration()
-
-    timer_label.setText(format_time(remaining_seconds))
-
-    #Automatically start the next session.
-    start_focus()
-
-    if session_type == ("break"):
-        notify_user(
-            "Break started",
-            f"Focus complete! Take a {break_duration //60
-            }-minutes break."
-        )
-        show_work_log()
-    else:
-        notify_user(
-            "Focus started",
-            f"Break complete! Your {focus_duration //60
-            }-minutes focus session has started."
-        )"""
 
 def notify_user(title, message):
     if (
@@ -464,15 +466,15 @@ def skip_session():
     if current_session_index >= len(active_plan):
         return
 
-    finish_session()
+    finish_session(outcome="skipped")
 
 #Simple Time conversion for refference
 print(format_time(1500))
-print(format_time(1000))
+#print(format_time(1000))
 print(format_time(90))
-print(format_time(7))
-print(format_time(0))
-print(format_time(125))
+#print(format_time(7))
+#print(format_time(0))
+#print(format_time(125))
 
 print("90 minutes:", build_session_plan(90,25,7))
 print("50 minutes:", build_session_plan(50,25,7))
@@ -578,7 +580,7 @@ layout.addWidget(status_label)
 #layout.addWidget(timer_label)
 layout.addWidget(start_button)
 layout.addWidget(pause_button)
-layout.addWidget(skip_button)
+#layout.addWidget(skip_button)
 layout.addWidget(compact_button)
 layout.addWidget(focus_input)
 layout.addWidget(break_input)
@@ -589,11 +591,13 @@ layout.addWidget(plan_preview)
 
 #Reset button window
 reset_button.setText("Reset plan")
-layout.addWidget(
-    reset_button,
-    alignment=Qt.AlignmentFlag.AlignRight
-)
-layout.addWidget(reset_button)
+
+bottom_buttons = QHBoxLayout()
+bottom_buttons.addWidget(skip_button)
+bottom_buttons.addStretch()
+bottom_buttons.addWidget(reset_button)
+
+layout.addLayout(bottom_buttons)
 
 #log window settings
 log_window = QDialog(window)
