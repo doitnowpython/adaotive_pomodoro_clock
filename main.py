@@ -27,8 +27,9 @@ from PySide6.QtGui import (
 from PySide6.QtMultimedia import (
     QSoundEffect)
 
-from database import save_session_record
-import time
+import history_window
+from database import save_session_record, fetch_recent_sessions
+from history_window import HistoryWindow
 
 def start_focus():
     global started_at, active_plan, current_session_index
@@ -210,6 +211,7 @@ def toogle_compact():
     available_time_input.setVisible(not is_compact)
     preview_plan_button.setVisible(not is_compact)
     plan_preview.setVisible(not is_compact)
+    history_button.setVisible(not is_compact)
 
     font = timer_label.font()
 
@@ -294,7 +296,7 @@ def finish_session(outcome = "completed"):
         f"{(time.perf_counter() - save_started) * 1000:.1f} ms"
     )
 
-    if save_log_button is not None:
+    if save_session_id is not None:
         print(f"Session saved with ID: {save_session_id}")
 
     session_sound.play()
@@ -481,6 +483,13 @@ def skip_session():
 
     finish_session(outcome="skipped")
 
+def show_history():
+    history_window.load_sessions()
+    history_window.show()
+    history_window.raise_()
+    history_window.activateWindow()
+
+
 #Simple Time conversion for refference
 print(format_time(1500))
 #print(format_time(1000))
@@ -517,6 +526,9 @@ window = QWidget()
 window.setWindowTitle("My Focus Clock")
 window.resize(300, 200)
 
+#history window linking
+history_window = HistoryWindow(window)
+
 #app siund settings
 session_sound = QSoundEffect(window)
 session_sound.setSource(QUrl.fromLocalFile(str(sound_path)))
@@ -550,6 +562,7 @@ reset_button = QPushButton("Reset")
 pause_button = QPushButton("Pause")
 skip_button = QPushButton("Skip Session")
 compact_button = QPushButton("Compact")
+history_button = QPushButton("History")
 focus_input = QSpinBox()
 
 timer_font = QFont()
@@ -600,6 +613,7 @@ layout.addWidget(break_input)
 layout.addWidget(available_time_input)
 layout.addWidget(preview_plan_button)
 layout.addWidget(plan_preview)
+layout.addWidget(history_button)
 
 
 #Reset button window
@@ -652,8 +666,21 @@ compact_button.clicked.connect(toogle_compact)
 focus_input.valueChanged.connect(change_focus_duration)
 break_input.valueChanged.connect(change_break_duration)
 preview_plan_button.clicked.connect(preview_session_plan)
+history_button.clicked.connect(show_history)
 
+"""
+try:
+    recent_sessions = fetch_recent_sessions(limit = 5)
 
+    for row in recent_sessions:
+        print(dict(row))
+
+    if not recent_sessions:
+        print("No session history yet")
+
+except sqlite3.Error as error:
+    print("Could not load session history : ", error)
+"""
 window.show()
 sys.exit(app.exec())
 

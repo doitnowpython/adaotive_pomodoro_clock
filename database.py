@@ -1,4 +1,3 @@
-import sys
 from pathlib import Path
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -49,3 +48,36 @@ def save_session_record(record):
         print("Couldn't save session: ", error)
         print("Unsaved session record: ", record)
         return None
+
+def fetch_recent_sessions(limit = 20):
+    if not database_path.exists():
+        return []
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.row_factory = sqlite3.Row
+
+        # A new installation may not have a session yet.
+        table_exists = connection.execute("""
+              Select name
+              From sqlite_master
+              where type = 'table'
+              AND name =  'sessions_records'
+              """).fetchone()
+
+        if table_exists is None:
+            return []
+
+        rows = connection.execute("""
+            Select
+            id,
+            session_type,
+            outcome,
+            planned_seconds,
+            actual_seconds,
+            saved_at
+            FROM sessions_records
+            order by id DESC
+            limit ?
+            """, (limit,)).fetchall()
+
+        return rows
