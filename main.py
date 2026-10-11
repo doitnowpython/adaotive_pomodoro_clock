@@ -88,6 +88,7 @@ def start_focus():
     start_button.setText(f"{session_type.capitalize()} running")
     start_button.setEnabled(False)
     pause_button.setEnabled(True)
+    skip_button.setEnabled(True)
 
     # Refresh the display whenever a session starts or resumes.
     if session_type == "focus":
@@ -130,6 +131,7 @@ def reset_focus():
     start_button.setText("Start!")
     start_button.setEnabled(True)
     pause_button.setEnabled(False)
+    skip_button.setEnabled(False)
 
 
 
@@ -454,6 +456,16 @@ def confirm_reset():
     if answer == QMessageBox.StandardButton.Yes:
         reset_focus()
 
+def skip_session():
+    #Nothing to skip before starting or after the plan code
+    if not active_plan:
+        return
+
+    if current_session_index >= len(active_plan):
+        return
+
+    finish_session()
+
 #Simple Time conversion for refference
 print(format_time(1500))
 print(format_time(1000))
@@ -521,6 +533,7 @@ session_label.setStyleSheet(
 start_button = QPushButton("Start!")
 reset_button = QPushButton("Reset")
 pause_button = QPushButton("Pause")
+skip_button = QPushButton("Skip Session")
 compact_button = QPushButton("Compact")
 focus_input = QSpinBox()
 
@@ -532,6 +545,7 @@ timer_label.setFont(timer_font)
 timer_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
 pause_button.setEnabled(False)
+skip_button.setEnabled(False)
 
 focus_input.setRange(1,180)
 focus_input.setValue(focus_duration // 60)
@@ -564,7 +578,7 @@ layout.addWidget(status_label)
 #layout.addWidget(timer_label)
 layout.addWidget(start_button)
 layout.addWidget(pause_button)
-
+layout.addWidget(skip_button)
 layout.addWidget(compact_button)
 layout.addWidget(focus_input)
 layout.addWidget(break_input)
@@ -616,6 +630,7 @@ window.setWindowOpacity(0.9)
 start_button.clicked.connect(start_focus)
 reset_button.clicked.connect(confirm_reset)
 pause_button.clicked.connect(pause_focus)
+skip_button.clicked.connect(skip_session)
 compact_button.clicked.connect(toogle_compact)
 focus_input.valueChanged.connect(change_focus_duration)
 break_input.valueChanged.connect(change_break_duration)
