@@ -40,7 +40,7 @@ class HistoryWindow(QDialog):
             "Type",
             "Outcome",
             "Planned (min)",
-            "Actual (min)",
+            "Actual (sec)",
             "Saved at (IST)"
         ])
         self.table.setEditTriggers(

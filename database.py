@@ -81,3 +81,31 @@ def fetch_recent_sessions(limit = 20):
             """, (limit,)).fetchall()
 
         return rows
+
+
+def initialize_work_logs():
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.execute("""
+            CREATE TABLE IF NOT EXISTS work_logs (
+                id INTEGER PRIMARY KEY,
+                task TEXT NOT NULL,
+                remarks TEXT NOT NULL,
+                session_id INTEGER REFERENCES sessions_records(id)
+            )
+        """)
+
+        columns = {
+            row[1]
+            for row in connection.execute(
+            "PRAGMA table_info(work_logs)"
+            )
+        }
+
+        if "session_id" not in columns:
+            connection.execute("""
+               ALTER TABLE work_logs
+               ADD COLUMN session_id INTEGER
+               REFERENCES sessions_records(id)
+           """)
+
+        connection.commit()

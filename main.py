@@ -28,8 +28,9 @@ from PySide6.QtMultimedia import (
     QSoundEffect)
 
 import history_window
-from database import save_session_record, fetch_recent_sessions
+from database import save_session_record, fetch_recent_sessions, initialize_work_logs
 from history_window import HistoryWindow
+
 
 def start_focus():
     global started_at, active_plan, current_session_index
@@ -334,7 +335,8 @@ def finish_session(outcome = "completed"):
             f"Next session: {get_session_duration() // 60} minutes."
         )
 
-    if finished_type == "focus":
+    if finished_type == "focus" and save_session_id is not None:
+        pending_log_sessions_ids.append(save_session_id)
         show_work_log()
 
 
@@ -354,6 +356,15 @@ def notify_user(title, message):
 
 def show_work_log():
     print("Opening work log window")
+    if not pending_log_sessions_ids:
+        return
+
+    session_id = pending_log_sessions_ids[0]
+
+    log_window.setWindowTitle(
+        f"Notes for focus session #{session_id}"
+    )
+    save_log_button.setEnabled(True)
     log_window.show()
     log_window.raise_()
 
@@ -374,6 +385,12 @@ def preview_work_log():
     log_feedback_label.setText("Preview printed in the console. Not saved yet.")
 
 def save_work_log():
+
+    if not pending_log_sessions_ids:
+        log_feedback_label.setText("No session waiting for notes.")
+        return
+
+    session_id = pending_log_sessions_ids[0]
     task_name = task_name_input.text().strip()
     remarks = remarks_input.toPlainText().strip()
 
@@ -382,20 +399,21 @@ def save_work_log():
         return
 
     try:
-        with closing(
-                sqlite3.connect(database_path
-                )) as connection:
+        with closing(sqlite3.connect(database_path)) as connection:
+            connection.execute("PRAGMA foreign_keys = ON")
+
             connection.execute("""
-            CREATE TABLE IF NOT EXISTS work_logs(
-                id INTEGER PRIMARY KEY,
-                task TEXT NOT NULL,
-                remarks TEXT NOT NULL
-                )
-                """)
-            connection.execute(
-                "INSERT INTO work_logs (task, remarks) VALUES (?, ?)",
-                (task_name, remarks)
-            )
+                INSERT INTO work_logs (
+                    task,
+                    remarks,
+                    session_id
+                    )
+                    VALUES (?,?,?)
+                    """,(
+                    task_name,
+                    remarks,
+                    session_id
+                ) )
 
             connection.commit()
 
@@ -406,9 +424,23 @@ def save_work_log():
         print("Save error:", error)
         return
 
-    log_feedback_label.setText("Work log saved.")
+    # Remove the pending ID only after saving succeeds.
+    pending_log_sessions_ids.pop(0)
+
     task_name_input.clear()
     remarks_input.clear()
+
+    if pending_log_sessions_ids:
+        show_work_log()
+        log_feedback_label.setText(
+            f"Saved notes for #{session_id}. "
+            "Now showing the next pending session."
+        )
+    else:
+        log_feedback_label.setText(
+            f"Saved notes for #{session_id}. "
+        )
+        save_log_button.setEnabled(False)
 
 def build_session_plan(total_minutes, focus_minutes, break_minutes):
     if total_minutes < 0:
@@ -517,9 +549,13 @@ break_duration = 7 * 60
 session_type = "focus"
 active_plan = []
 current_session_index = 0
+pending_log_sessions_ids = []
 
 #app window creation
 app = QApplication(sys.argv)
+
+# adding Database table check -checks Schema each startup
+initialize_work_logs()
 
 #app window settings
 window = QWidget()
