@@ -109,3 +109,14 @@ def initialize_work_logs():
            """)
 
         connection.commit()
+
+def fetch_sessions_notes(session_id):
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.row_factory = sqlite3.Row
+
+        return connection.execute("""
+            SELECT task, remarks
+            FROM work_logs
+            WHERE session_id = ?
+            ORDER BY id
+            """, (session_id,)).fetchall()

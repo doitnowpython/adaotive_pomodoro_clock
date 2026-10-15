@@ -337,6 +337,7 @@ def finish_session(outcome = "completed"):
 
     if finished_type == "focus" and save_session_id is not None:
         pending_log_sessions_ids.append(save_session_id)
+        print("Notes queue after adding: ", pending_log_sessions_ids)
         show_work_log()
 
 
@@ -426,6 +427,7 @@ def save_work_log():
 
     # Remove the pending ID only after saving succeeds.
     pending_log_sessions_ids.pop(0)
+    print("Notes queue after saving: ", pending_log_sessions_ids)
 
     task_name_input.clear()
     remarks_input.clear()

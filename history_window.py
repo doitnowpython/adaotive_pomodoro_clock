@@ -2,17 +2,17 @@ import sqlite3
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
-from PySide6.QtWidgets import(
+from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
     QLabel,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
-    QVBoxLayout
+    QVBoxLayout, QTextEdit
 )
 
-from database import fetch_recent_sessions
+from database import fetch_recent_sessions, fetch_sessions_notes
 
 def format_saved_time(value):
     saved_time = datetime.fromisoformat(value)
@@ -34,6 +34,15 @@ class HistoryWindow(QDialog):
 
         self.feedback_label = QLabel()
 
+        self.notes_window = QDialog(self)
+        self.notes_window.resize(450,350)
+
+        self.notes_text = QTextEdit()
+        self.notes_text.setReadOnly(True)
+
+        notes_layout = QVBoxLayout(self.notes_window)
+        notes_layout.addWidget(self.notes_text)
+
         self.table = QTableWidget(0,6)
         self.table.setHorizontalHeaderLabels([
             "ID",
@@ -52,9 +61,15 @@ class HistoryWindow(QDialog):
         refresh_button = QPushButton("Refresh")
         refresh_button.clicked.connect(self.load_sessions)
 
+        notes_button = QPushButton("View Notes")
+        notes_button.clicked.connect(self.show_selected_notes)
+
         layout = QVBoxLayout(self)
         layout.addWidget(self.feedback_label)
         layout.addWidget(self.table)
+
+        layout.addWidget(notes_button)
+
         layout.addWidget(refresh_button)
 
     def load_sessions(self):
@@ -98,3 +113,48 @@ class HistoryWindow(QDialog):
             self.feedback_label.setText(
                 "No sessions saved yet."
             )
+
+    def show_selected_notes(self):
+        selected_row = self.table.currentRow()
+
+        if selected_row < 0:
+            self.feedback_label.setText(
+                "Select a session in the table first."
+            )
+            return
+
+        session_id = int(
+            self.table.item(selected_row, 0).text()
+        )
+
+        try:
+            notes = fetch_sessions_notes(session_id)
+        except sqlite3.Error as error:
+            self.feedback_label.setText(
+                "Could not load notes. Please try again."
+            )
+            print("Notes error: ", error)
+            return
+
+        sections =[]
+
+        for note in notes:
+            remarks = note["remarks"] or "No remarks entered."
+
+            sections.append(
+                f"Task : {note['task']}\n\n"
+                f"Remarks:\n{remarks}"
+            )
+
+        if sections:
+            text = "\n\n---------------------------\n\n".join(sections)
+        else:
+            text = "No saved notes linked to this session."
+
+        self.notes_text.setPlainText(text)
+        self.notes_window.setWindowTitle(
+            f"Notes for session #{session_id}"
+        )
+        self.notes_window.show()
+        self.notes_window.raise_()
+        self.notes_window.activateWindow()
