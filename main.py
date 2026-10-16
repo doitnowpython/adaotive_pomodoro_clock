@@ -28,7 +28,11 @@ from PySide6.QtMultimedia import (
     QSoundEffect)
 
 import history_window
-from database import save_session_record, fetch_recent_sessions, initialize_work_logs
+from database import (
+    save_session_record,
+    fetch_recent_sessions,
+    initialize_work_logs,
+    fetch_today_summary)
 from history_window import HistoryWindow
 
 
@@ -300,6 +304,12 @@ def finish_session(outcome = "completed"):
     if save_session_id is not None:
         print(f"Session saved with ID: {save_session_id}")
 
+        try:
+            print("Today's focus summary:" , fetch_today_summary())
+        except sqlite3.Error as error:
+            print("Could not load daily summary:", error)
+
+
     session_sound.play()
 
     started_at = None
@@ -443,6 +453,7 @@ def save_work_log():
             f"Saved notes for #{session_id}. "
         )
         save_log_button.setEnabled(False)
+        log_window.close()
 
 def build_session_plan(total_minutes, focus_minutes, break_minutes):
     if total_minutes < 0:
@@ -706,19 +717,14 @@ break_input.valueChanged.connect(change_break_duration)
 preview_plan_button.clicked.connect(preview_session_plan)
 history_button.clicked.connect(show_history)
 
-"""
+# testing
+
 try:
-    recent_sessions = fetch_recent_sessions(limit = 5)
-
-    for row in recent_sessions:
-        print(dict(row))
-
-    if not recent_sessions:
-        print("No session history yet")
-
+    summary = fetch_today_summary()
+    print("Today's focus summary: ", summary)
 except sqlite3.Error as error:
-    print("Could not load session history : ", error)
-"""
+    print("Could not fetch daily summary: ", error)
+
 window.show()
 sys.exit(app.exec())
 

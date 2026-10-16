@@ -120,3 +120,50 @@ def fetch_sessions_notes(session_id):
             WHERE session_id = ?
             ORDER BY id
             """, (session_id,)).fetchall()
+
+
+def fetch_today_summary():
+    today = datetime.now(
+        ZoneInfo("Asia/Kolkata")
+    ).date().isoformat()
+
+    empty_summary = {
+        "focus_seconds": 0.0,
+        "competed": 0,
+        "skipped": 0
+    }
+
+    if not database_path.exists():
+        return empty_summary
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.row_factory = sqlite3.Row
+
+        table_exists = connection.execute("""
+                                          SELECT name
+                                          FROM sqlite_master
+                                          Where type = 'table'
+                                          AND name =  'sessions_records'
+                                          """).fetchone()
+        print("Summary database: ", database_path)
+        print("Summary date: ", today)
+        print("Table found: ", table_exists)
+
+        if table_exists is None:
+            return empty_summary
+
+        rows = connection.execute("""
+                    SELECT
+                    COALESCE(SUM(actual_seconds),0) AS focus_seconds,
+                    COUNT(
+                          CASE WHEN outcome = "completed" THEN 1 END
+                    ) AS completed,
+                    COUNT(
+                          CASE WHEN outcome = "skipped" THEN 1 END
+                    ) AS skipped
+                    FROM sessions_records
+                    where session_type = 'focus'
+                    AND date(saved_at, '+5 hours', '+30 minutes') = ?
+                    """, (today,)).fetchone()
+
+        return dict(rows)
