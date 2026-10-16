@@ -12,7 +12,11 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QTextEdit
 )
 
-from database import fetch_recent_sessions, fetch_sessions_notes
+from database import (
+    fetch_recent_sessions,
+    fetch_sessions_notes,
+    fetch_today_summary
+)
 
 def format_saved_time(value):
     saved_time = datetime.fromisoformat(value)
@@ -34,6 +38,12 @@ class HistoryWindow(QDialog):
 
         self.feedback_label = QLabel()
 
+        self.summary_label = QLabel()
+        self.summary_label.setWordWrap(True)
+        self.summary_label.setStyleSheet(
+            "font-size: 14px; font-weight:bold; padding: 8px;"
+        )
+
         self.notes_window = QDialog(self)
         self.notes_window.resize(450,350)
 
@@ -44,6 +54,12 @@ class HistoryWindow(QDialog):
         notes_layout.addWidget(self.notes_text)
 
         self.table = QTableWidget(0,6)
+        self.table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.table.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection
+        )
         self.table.setHorizontalHeaderLabels([
             "ID",
             "Type",
@@ -65,6 +81,7 @@ class HistoryWindow(QDialog):
         notes_button.clicked.connect(self.show_selected_notes)
 
         layout = QVBoxLayout(self)
+        layout.addWidget(self.summary_label)
         layout.addWidget(self.feedback_label)
         layout.addWidget(self.table)
 
@@ -73,6 +90,7 @@ class HistoryWindow(QDialog):
         layout.addWidget(refresh_button)
 
     def load_sessions(self):
+        self.load_summary()
         self.table.setRowCount(0)
 
         try:
@@ -158,3 +176,23 @@ class HistoryWindow(QDialog):
         self.notes_window.show()
         self.notes_window.raise_()
         self.notes_window.activateWindow()
+
+    def load_summary(self):
+        try:
+            summary = fetch_today_summary()
+        except sqlite3.Error as error:
+            self.summary_label.setText(
+                "Daily summary unavailable. Click Refresh to retry."
+            )
+            print("Summary error: ", error)
+            return
+
+        total_seconds = int(summary["focus_seconds"])
+        minutes, seconds = divmod(total_seconds, 60)
+
+        self.summary_label.setText(
+            f"Today (IST) - Saved focus time: "
+            f"{minutes} min {seconds:02d} sec\n"
+            f"Focus sessions - Completed: {summary['completed']} | "
+            f"Skipped: {summary['skipped']}"
+        )

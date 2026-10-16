@@ -129,7 +129,7 @@ def fetch_today_summary():
 
     empty_summary = {
         "focus_seconds": 0.0,
-        "competed": 0,
+        "completed": 0,
         "skipped": 0
     }
 
