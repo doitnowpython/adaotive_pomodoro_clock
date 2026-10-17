@@ -21,7 +21,8 @@ import math
 from PySide6.QtCore import (
     QTimer,
     Qt,
-    QUrl)
+    QUrl,
+    QSettings)
 from PySide6.QtGui import (
     QFont, QIcon)
 from PySide6.QtMultimedia import (
@@ -35,6 +36,11 @@ from database import (
     fetch_today_summary)
 from history_window import HistoryWindow
 
+def save_settings():
+    settings.setValue("focus_minutes", focus_input.value())
+    settings.setValue("break_minutes", break_input.value())
+    settings.setValue("available_minutes", available_time_input.value())
+    settings.sync()
 
 def start_focus():
     global started_at, active_plan, current_session_index
@@ -567,6 +573,9 @@ pending_log_sessions_ids = []
 #app window creation
 app = QApplication(sys.argv)
 
+#
+settings = QSettings("PiyushApps", "AdaptivePomodoroClock")
+
 # adding Database table check -checks Schema each startup
 initialize_work_logs()
 
@@ -717,6 +726,19 @@ break_input.valueChanged.connect(change_break_duration)
 preview_plan_button.clicked.connect(preview_session_plan)
 history_button.clicked.connect(show_history)
 
+
+#saved settings
+focus_input.setValue(
+    settings.value("focus_minutes", 25, type=int)
+)
+break_input.setValue(
+    settings.value("break_minutes", 7, type=int)
+)
+available_time_input.setValue(
+    settings.value("available_minutes", 90, type=int)
+)
+#save settings when the
+app.aboutToQuit.connect(save_settings)
 # testing
 
 try:
