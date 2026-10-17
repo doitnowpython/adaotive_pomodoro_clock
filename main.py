@@ -27,7 +27,7 @@ from PySide6.QtGui import (
     QFont, QIcon)
 from PySide6.QtMultimedia import (
     QSoundEffect)
-
+import json
 import history_window
 from database import (
     save_session_record,
@@ -36,10 +36,21 @@ from database import (
     fetch_today_summary)
 from history_window import HistoryWindow
 
+
 def save_settings():
     settings.setValue("focus_minutes", focus_input.value())
     settings.setValue("break_minutes", break_input.value())
     settings.setValue("available_minutes", available_time_input.value())
+    settings.setValue("compact_mode", is_compact)
+    settings.setValue("window_position", window.pos())
+
+    #Checking if notes are saved or not
+    pending_notes = {
+        "session_ids" : pending_log_sessions_ids,
+        "task" : task_name_input.text(),
+        "remarks" : remarks_input.toPlainText()
+    }
+    settings.setValue("pending_notes", json.dumps(pending_notes))
     settings.sync()
 
 def start_focus():
@@ -540,6 +551,34 @@ def show_history():
     history_window.raise_()
     history_window.activateWindow()
 
+def restore_pending_notes():
+    saved_notes = settings.value("pending_notes","",type=str)
+
+    if not saved_notes:
+        return
+
+    try:
+        notes = json.loads(saved_notes)
+        session_ids = [int(value) for value in notes["session_ids"]]
+        task = notes["task"]
+        remarks = notes["remarks"]
+
+        if not isinstance(task, str) or not isinstance(remarks, str):
+            raise ValueError("Invalid note text")
+
+    except (ValueError, TypeError, KeyError) as error:
+        print ("Could not restore pending notes:", error)
+        return
+
+    pending_log_sessions_ids.clear()
+    pending_log_sessions_ids.extend(session_ids)
+
+    task_name_input.setText(task)
+    remarks_input.setPlainText(remarks)
+
+    if pending_log_sessions_ids:
+        show_work_log()
+
 
 #Simple Time conversion for refference
 print(format_time(1500))
@@ -746,8 +785,21 @@ try:
     print("Today's focus summary: ", summary)
 except sqlite3.Error as error:
     print("Could not fetch daily summary: ", error)
+# window position and show
+window.move(
+    settings.value("window_position", window.pos())
+)
 
+#shoes the window
 window.show()
+
+# saves the last postion of the window
+if settings.value("compact_mode", False, type= bool):
+    toogle_compact()
+
+# restore pending notes
+restore_pending_notes()
+
 sys.exit(app.exec())
 
 
