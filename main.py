@@ -36,6 +36,23 @@ from database import (
     fetch_today_summary)
 from history_window import HistoryWindow
 
+def save_pending_notes():
+    pending_notes = {
+        "session_ids" : pending_log_sessions_ids,
+        "task" : task_name_input.text(),
+        "remarks" : remarks_input.toPlainText()
+    }
+
+    settings.setValue("pending_notes", json.dumps(pending_notes))
+    settings.sync()
+
+    if settings.status() != QSettings.Status.NoError:
+        log_feedback_label.setText(
+            "Could not autosave draft. keep this window open."
+        )
+
+def schedule_notes_autosave():
+    notes_autosave_timer.start()
 
 def save_settings():
     settings.setValue("focus_minutes", focus_input.value())
@@ -44,14 +61,7 @@ def save_settings():
     settings.setValue("compact_mode", is_compact)
     settings.setValue("window_position", window.pos())
 
-    #Checking if notes are saved or not
-    pending_notes = {
-        "session_ids" : pending_log_sessions_ids,
-        "task" : task_name_input.text(),
-        "remarks" : remarks_input.toPlainText()
-    }
-    settings.setValue("pending_notes", json.dumps(pending_notes))
-    settings.sync()
+    save_pending_notes()
 
 def start_focus():
     global started_at, active_plan, current_session_index
@@ -364,6 +374,7 @@ def finish_session(outcome = "completed"):
 
     if finished_type == "focus" and save_session_id is not None:
         pending_log_sessions_ids.append(save_session_id)
+        save_pending_notes()
         print("Notes queue after adding: ", pending_log_sessions_ids)
         show_work_log()
 
@@ -393,6 +404,8 @@ def show_work_log():
         f"Notes for focus session #{session_id}"
     )
     save_log_button.setEnabled(True)
+    task_name_input.setEnabled(True)
+    remarks_input.setEnabled(True)
     log_window.show()
     log_window.raise_()
 
@@ -404,7 +417,7 @@ def preview_work_log():
         log_feedback_label.setText("Please enter a task name")
         return
 
-    work_log ={
+    work_log = {
         "task": task_name,
         "remarks": remarks
     }
@@ -458,6 +471,7 @@ def save_work_log():
 
     task_name_input.clear()
     remarks_input.clear()
+    save_pending_notes()
 
     if pending_log_sessions_ids:
         show_work_log()
@@ -470,6 +484,12 @@ def save_work_log():
             f"Saved notes for #{session_id}. "
         )
         save_log_button.setEnabled(False)
+        task_name_input.setEnabled(False)
+        remarks_input.setEnabled(False)
+        QTimer.singleShot(1500, close_work_log_if_done)
+
+def close_work_log_if_done():
+    if not pending_log_sessions_ids:
         log_window.close()
 
 def build_session_plan(total_minutes, focus_minutes, break_minutes):
@@ -755,6 +775,11 @@ window.setLayout(layout)
 window.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
 window.setWindowOpacity(0.9)
 
+notes_autosave_timer = QTimer(window)
+notes_autosave_timer.setSingleShot(True)
+notes_autosave_timer.setInterval(500)
+
+#connections
 start_button.clicked.connect(start_focus)
 reset_button.clicked.connect(confirm_reset)
 pause_button.clicked.connect(pause_focus)
@@ -764,6 +789,9 @@ focus_input.valueChanged.connect(change_focus_duration)
 break_input.valueChanged.connect(change_break_duration)
 preview_plan_button.clicked.connect(preview_session_plan)
 history_button.clicked.connect(show_history)
+notes_autosave_timer.timeout.connect(save_pending_notes)
+task_name_input.textChanged.connect(schedule_notes_autosave)
+remarks_input.textChanged.connect(schedule_notes_autosave)
 
 
 #saved settings
