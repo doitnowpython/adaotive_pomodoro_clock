@@ -54,6 +54,25 @@ def save_pending_notes():
 def schedule_notes_autosave():
     notes_autosave_timer.start()
 
+def save_timer_state():
+    if not active_plan or current_session_index >= len(active_plan):
+        settings.remove("timer_state")
+    else:
+        elapsed = elapsed_before_pause
+
+        if started_at is not None:
+            elapsed += time.monotonic() - started_at
+
+        state = {
+            "plan" : active_plan,
+            "index" : current_session_index,
+            "elapsed" : min(get_session_duration(), max(0.0, elapsed))
+        }
+
+        settings.setValue("timer_state", json.dumps(state))
+
+    settings.sync()
+
 def save_settings():
     settings.setValue("focus_minutes", focus_input.value())
     settings.setValue("break_minutes", break_input.value())
@@ -62,6 +81,7 @@ def save_settings():
     settings.setValue("window_position", window.pos())
 
     save_pending_notes()
+    save_timer_state()
 
 def start_focus():
     global started_at, active_plan, current_session_index
@@ -599,7 +619,75 @@ def restore_pending_notes():
     if pending_log_sessions_ids:
         show_work_log()
 
+def restore_timer_state():
+    global active_plan, current_session_index, session_type
+    global started_at, elapsed_before_pause, remaining_seconds
 
+    saved_state = settings.value("timer_state","",type=str)
+    if not saved_state:
+        return
+
+    try:
+        state = json.loads(saved_state)
+        plan = state["plan"]
+        index = state["index"]
+        elapsed = float(state["elapsed"])
+
+        if not isinstance(plan, list) or not plan:
+            raise ValueError("Invalid plan")
+
+        for kind,minutes in plan:
+            if kind not in ("focus", "break"):
+                raise ValueError("Invalid session type")
+            if type(minutes) is not int or minutes <= 0:
+                raise ValueError("Invalid duration")
+
+        if type(index) is not int or not 0 <= index <= len(plan):
+            raise ValueError("Invalid session index")
+
+        if not math.isfinite(elapsed) or elapsed <= 0:
+            raise ValueError("Invalid elapsed time")
+
+    except (ValueError, TypeError, KeyError) as error:
+        print ("Could not restore timer: ", error)
+        return
+
+    timer.stop()
+    active_plan = plan
+    current_session_index = index
+    session_type =  plan[index][0]
+    started_at = None
+
+    elapsed_before_pause = min(elapsed, get_session_duration())
+    remaining_seconds = math.ceil(
+        get_session_duration() - elapsed_before_pause
+    )
+
+    timer_label.setText(format_time(remaining_seconds))
+    session_label.setText(f"{session_type.upper()} - PAUSED")
+
+    colour = "#FBBF24" if session_type == "focus" else "#16803C"
+    timer_label.setStyleSheet(f"color: {colour};")
+
+    status_label.setText(
+        f"Restored block {index + 1} of len {len(plan)}.\n"
+        "Resume to continue, or Reset plan to discard."
+    )
+
+    start_button.setText("Resume!")
+    start_button.setEnabled(True)
+    pause_button.setEnabled(False)
+    skip_button.setEnabled(True)
+
+    for widget in (
+        focus_input,
+        break_input,
+        available_time_input,
+        preview_plan_button
+    ):
+        widget.setEnabled(False)
+
+    preview_session_plan()
 #Simple Time conversion for refference
 print(format_time(1500))
 #print(format_time(1000))
@@ -826,6 +914,7 @@ if settings.value("compact_mode", False, type= bool):
     toogle_compact()
 
 # restore pending notes
+restore_timer_state()
 restore_pending_notes()
 
 sys.exit(app.exec())
