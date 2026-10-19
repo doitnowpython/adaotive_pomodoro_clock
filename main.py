@@ -156,6 +156,7 @@ def start_focus():
         timer_label.setStyleSheet("color: #16803C;")
     timer.start(100)
     update_countdown()
+    save_timer_state()
 
 def reset_focus():
     global active_plan, current_session_index, session_type
@@ -189,6 +190,7 @@ def reset_focus():
     start_button.setEnabled(True)
     pause_button.setEnabled(False)
     skip_button.setEnabled(False)
+    save_timer_state()
 
 
 
@@ -246,6 +248,7 @@ def pause_focus():
     start_button.setText("Resume!")
     start_button.setEnabled(True)
     pause_button.setEnabled(False)
+    save_timer_state()
 
 def toogle_compact():
     global is_compact,normal_size
@@ -398,6 +401,7 @@ def finish_session(outcome = "completed"):
         print("Notes queue after adding: ", pending_log_sessions_ids)
         show_work_log()
 
+    save_timer_state()
 
 def notify_user(title, message):
     if (
@@ -647,6 +651,11 @@ def restore_timer_state():
 
         if not math.isfinite(elapsed) or elapsed <= 0:
             raise ValueError("Invalid elapsed time")
+
+        state_autosave_timer =QTimer(window)
+        state_autosave_timer.setInterval(5000)
+        state_autosave_timer.timeout.connect(save_timer_state)
+        state_autosave_timer.start()
 
     except (ValueError, TypeError, KeyError) as error:
         print ("Could not restore timer: ", error)
