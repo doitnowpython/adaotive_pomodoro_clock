@@ -66,7 +66,11 @@ def save_timer_state():
         state = {
             "plan" : active_plan,
             "index" : current_session_index,
-            "elapsed" : min(get_session_duration(), max(0.0, elapsed))
+            "elapsed" : min(
+                get_session_duration(),
+                max(0.0, elapsed)
+            ),
+            "break_wait_started_at" : break_wait_started_at
         }
 
         settings.setValue("timer_state", json.dumps(state))
@@ -86,6 +90,7 @@ def save_settings():
 def start_focus():
     global started_at, active_plan, current_session_index
     global session_type, remaining_seconds
+    global break_wait_started_at
 
     if started_at is not None:
         return 
@@ -123,6 +128,7 @@ def start_focus():
     ):
         widget.setEnabled(False)
 
+    break_wait_started_at = None
     started_at = time.monotonic()
 
 
@@ -161,8 +167,10 @@ def start_focus():
 def reset_focus():
     global active_plan, current_session_index, session_type
     global started_at, elapsed_before_pause, remaining_seconds
+    global break_wait_started_at
 
     timer.stop()
+    break_wait_started_at = None
 
     active_plan = []
     current_session_index = 0
@@ -313,6 +321,7 @@ def get_session_duration():
 def finish_session(outcome = "completed"):
     global session_type, started_at, current_session_index
     global elapsed_before_pause, remaining_seconds
+    global break_wait_started_at
 
     if not active_plan or current_session_index >= len(active_plan):
         return
@@ -400,6 +409,8 @@ def finish_session(outcome = "completed"):
 
         else:
             # Prepare the next focus, but wait for Start.
+            break_wait_started_at = time.time()
+
             session_label.setText("FOCUS - READY")
             timer_label.setStyleSheet("color: #FBBF24;")
 
@@ -649,6 +660,7 @@ def restore_pending_notes():
 def restore_timer_state():
     global active_plan, current_session_index, session_type
     global started_at, elapsed_before_pause, remaining_seconds
+    global break_wait_started_at
 
     saved_state = settings.value("timer_state","",type=str)
     if not saved_state:
@@ -659,6 +671,16 @@ def restore_timer_state():
         plan = state["plan"]
         index = state["index"]
         elapsed = float(state["elapsed"])
+        saved_wait_started_at = state.get("break_wait_started_at")
+
+        if saved_wait_started_at is not None:
+            saved_wait_started_at = float(saved_wait_started_at)
+
+            if (
+                not math.isfinite(saved_wait_started_at)
+                or saved_wait_started_at <= 0
+            ):
+                raise ValueError("Invalid session start time")
 
         if not isinstance(plan, list) or not plan:
             raise ValueError("Invalid plan")
@@ -684,6 +706,7 @@ def restore_timer_state():
     current_session_index = index
     session_type =  plan[index][0]
     started_at = None
+    break_wait_started_at = saved_wait_started_at
 
     elapsed_before_pause = min(elapsed, get_session_duration())
     remaining_seconds = math.ceil(
@@ -715,6 +738,12 @@ def restore_timer_state():
         widget.setEnabled(False)
 
     preview_session_plan()
+
+def get_break_wait_seconds():
+    if break_wait_started_at is None:
+        return 0.0
+
+    return max(0.0, time.time() - break_wait_started_at)
 #Simple Time conversion for refference
 print(format_time(1500))
 #print(format_time(1000))
@@ -743,6 +772,7 @@ session_type = "focus"
 active_plan = []
 current_session_index = 0
 pending_log_sessions_ids = []
+break_wait_started_at = None
 
 #app window creation
 app = QApplication(sys.argv)
