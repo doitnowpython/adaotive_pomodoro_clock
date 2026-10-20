@@ -76,6 +76,12 @@ def save_timer_state():
         settings.setValue("timer_state", json.dumps(state))
 
     settings.sync()
+    #Temp
+    if break_wait_started_at is not None:
+        print(
+            f"Waiting after break: "
+            f"{get_break_wait_seconds():.1f} seconds"
+        )
 
 def save_settings():
     settings.setValue("focus_minutes", focus_input.value())
@@ -744,6 +750,48 @@ def get_break_wait_seconds():
         return 0.0
 
     return max(0.0, time.time() - break_wait_started_at)
+
+def get_break_buffer_seconds(break_minutes):
+    if not 0 < break_minutes <= 120:
+        raise ValueError("Break duration must be between 0 and 120 minutes.")
+
+    if break_minutes < 10:
+        return 10*60
+
+    # (planned break minutes, extra buffer minutes)
+    points = [
+        (10,10),
+        (15,10.5),
+        (30,12),
+        (60,15),
+        (120,18)
+    ]
+
+    for (start, start_buffer), (end, end_buffer) in zip(
+            points, points[1:]):
+        if break_minutes <= end :
+            fraction = (break_minutes - start) / (end - start)
+            buffer_minutes = (
+                start_buffer + fraction * (end_buffer - start_buffer)
+            )
+            return round(buffer_minutes * 60)
+
+def is_break_review_due():
+    if break_wait_started_at is None:
+        return False
+
+    if not 0 < current_session_index < len(active_plan):
+        return False
+
+    previous_type, previous_minutes = active_plan[current_session_index - 1]
+
+    if previous_type != "break":
+        return False
+
+    buffer_seconds = get_break_buffer_seconds(preview_session_plan)
+    return get_break_wait_seconds() < buffer_seconds
+
+
 #Simple Time conversion for refference
 print(format_time(1500))
 #print(format_time(1000))
@@ -951,13 +999,14 @@ available_time_input.setValue(
 )
 #save settings when the
 app.aboutToQuit.connect(save_settings)
-# testing
 
-try:
-    summary = fetch_today_summary()
-    print("Today's focus summary: ", summary)
-except sqlite3.Error as error:
-    print("Could not fetch daily summary: ", error)
+# testing
+for minutes in (7,15,20,30,60,90,120):
+    print(
+        f"Break {minutes} min -> buffer"
+        f"{get_break_buffer_seconds(minutes)}"
+    )
+
 # window position and show
 window.move(
     settings.value("window_position", window.pos())
