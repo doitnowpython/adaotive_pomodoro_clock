@@ -388,12 +388,35 @@ def finish_session(outcome = "completed"):
         remaining_seconds = get_session_duration()
 
         timer_label.setText(format_time(remaining_seconds))
-        start_focus()
 
-        notify_user(
-            f"{session_type.capitalize()} started",
-            f"Next session: {get_session_duration() // 60} minutes."
-        )
+        if session_type == "break":
+            # Start the break automatically after focus.
+            start_focus()
+
+            notify_user(
+                "Break Started",
+                f"Take a {remaining_seconds // 60}-minute break. "
+            )
+
+        else:
+            # Prepare the next focus, but wait for Start.
+            session_label.setText("FOCUS - READY")
+            timer_label.setStyleSheet("color: #FBBF24;")
+
+            status_label.setText(
+                f"Block {current_session_index + 1} of "
+                f"{len(active_plan)}\n"
+                "Click Start focus when you are ready."
+            )
+            start_button.setText("Start Focus")
+            start_button.setEnabled(True)
+            pause_button.setEnabled(False)
+            skip_button.setEnabled(False)
+
+            notify_user(
+                "Focus ready",
+                "Your break has ended. CLick Start focus to continue."
+            )
 
     if finished_type == "focus" and save_session_id is not None:
         pending_log_sessions_ids.append(save_session_id)
@@ -646,16 +669,11 @@ def restore_timer_state():
             if type(minutes) is not int or minutes <= 0:
                 raise ValueError("Invalid duration")
 
-        if type(index) is not int or not 0 <= index <= len(plan):
+        if type(index) is not int or not 0 <= index < len(plan):
             raise ValueError("Invalid session index")
 
-        if not math.isfinite(elapsed) or elapsed <= 0:
+        if not math.isfinite(elapsed) or elapsed < 0:
             raise ValueError("Invalid elapsed time")
-
-        state_autosave_timer =QTimer(window)
-        state_autosave_timer.setInterval(5000)
-        state_autosave_timer.timeout.connect(save_timer_state)
-        state_autosave_timer.start()
 
     except (ValueError, TypeError, KeyError) as error:
         print ("Could not restore timer: ", error)
@@ -926,6 +944,13 @@ if settings.value("compact_mode", False, type= bool):
 restore_timer_state()
 restore_pending_notes()
 
+# added timer saved state after every 5 seconds
+state_autosave_timer =QTimer(window)
+state_autosave_timer.setInterval(5000)
+state_autosave_timer.timeout.connect(save_timer_state)
+state_autosave_timer.start()
+
+#close the app
 sys.exit(app.exec())
 
 
