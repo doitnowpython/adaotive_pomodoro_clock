@@ -1,5 +1,6 @@
 import sqlite3
 from datetime import datetime, timezone
+from pickletools import decimalnl_short
 from zoneinfo import ZoneInfo
 
 from PySide6.QtWidgets import (
@@ -15,7 +16,8 @@ from PySide6.QtWidgets import (
 from database import (
     fetch_recent_sessions,
     fetch_sessions_notes,
-    fetch_today_summary
+    fetch_today_summary,
+    fetch_break_reviews
 )
 
 def format_saved_time(value):
@@ -80,12 +82,17 @@ class HistoryWindow(QDialog):
         notes_button = QPushButton("View Notes")
         notes_button.clicked.connect(self.show_selected_notes)
 
+        review_button = QPushButton("View Interruptions")
+        review_button.clicked.connect(self.show_break_reviews)
+
         layout = QVBoxLayout(self)
         layout.addWidget(self.summary_label)
         layout.addWidget(self.feedback_label)
         layout.addWidget(self.table)
 
         layout.addWidget(notes_button)
+
+        layout.addWidget(review_button)
 
         layout.addWidget(refresh_button)
 
@@ -196,3 +203,44 @@ class HistoryWindow(QDialog):
             f"Focus sessions - Completed: {summary['completed']} | "
             f"Skipped: {summary['skipped']}"
         )
+
+    def show_break_reviews(self):
+        try:
+            reviews = fetch_break_reviews()
+        except sqlite3.Error as error:
+            self.feedback_label.setText(
+                "Could not load interruptions. Please try again."
+            )
+            print("Interruptions history error: ", error)
+            return
+
+        sections = []
+
+        for review in reviews:
+            minutes, seconds = divmod(
+                int(review['extra_seconds']), 60
+            )
+            reason = review['reason'] or "Not provided"
+            decision = {
+                "continue": "Continued plan",
+                "wait": "Kept waiting"
+            }.get(review['decision'], review['decision'])
+
+            sections.append(
+                f"Reviewed: {format_saved_time(review['saved_at'])} IST\n"
+                f"Extra time at review: {minutes} min {seconds:02d} sec\n"
+                f"Reason: {reason}\n"
+                f"Choice: {decision}"
+            )
+
+            text = (
+                "\n\n".join(sections)
+                if sections
+                else "No interruption reviews saved yet."
+            )
+
+            self.notes_text.setPlainText(text)
+            self.notes_window.setWindowTitle("Recent interruptions - latest 20")
+            self.notes_window.show()
+            self.notes_window.raise_()
+            self.notes_window.activateWindow()

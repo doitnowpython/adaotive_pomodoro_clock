@@ -197,3 +197,25 @@ def save_break_review(wait_id, reason, decision, extra_seconds):
         """,(wait_id, reason, decision, extra_seconds, saved_at))
 
         connection.commit()
+
+def fetch_break_reviews(limit=20):
+    if not database_path.exists():
+        return []
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.row_factory = sqlite3.Row
+
+        table_exists = connection.execute("""
+            SELECT name FROM sqlite_master
+            WHERE type = 'table' AND name = 'break_reviews'
+        """).fetchone()
+
+        if table_exists is None:
+            return []
+
+        return connection.execute("""
+            SELECT reason, decision, extra_seconds, saved_at
+            FROM break_reviews
+            ORDER BY saved_at DESC, rowid DESC
+            LIMIT ?
+        """, (limit,)).fetchall()
