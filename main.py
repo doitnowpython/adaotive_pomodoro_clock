@@ -1,4 +1,6 @@
 import sys
+from asyncio import timeout
+from email import message
 from pathlib import Path
 import sqlite3
 from contextlib import closing
@@ -788,9 +790,46 @@ def is_break_review_due():
     if previous_type != "break":
         return False
 
-    buffer_seconds = get_break_buffer_seconds(preview_session_plan)
-    return get_break_wait_seconds() < buffer_seconds
+    buffer_seconds = get_break_buffer_seconds(previous_minutes)
+    return get_break_wait_seconds() > buffer_seconds
 
+def check_break_review():
+    if started_at is not None or not is_break_review_due():
+        return
+
+    #Identify this particular wait se we only ask once
+    wait_id = str(break_wait_started_at)
+
+    if settings.value("reviewed_break_wait", "", type= str) == wait_id:
+        return
+
+    # Remember before opening the popup to prevent repeated dialogs.
+    settings.setValue("reviewed_break_wait", wait_id)
+    settings.sync()
+
+    message = QMessageBox(window)
+    message.setText("Ready to continue?")
+    message.setText(
+        "Your break has ended and you've been away a little longer. \n\n"
+        "Continue the remaining plan unchanged, or keep waiting?"
+    )
+
+    continue_button = message.addButton(
+        "continue plan",
+        QMessageBox.ButtonRole.AcceptRole
+    )
+
+    wait_button = message.addButton(
+        "Keep waiting",
+        QMessageBox.ButtonRole.RejectRole
+    )
+
+    message.setDefaultButton(wait_button)
+    message.setEscapeButton(wait_button)
+    message.exec()
+
+    if message.clickedButton() == continue_button:
+        start_focus()
 
 #Simple Time conversion for refference
 print(format_time(1500))
@@ -1028,6 +1067,12 @@ state_autosave_timer =QTimer(window)
 state_autosave_timer.setInterval(5000)
 state_autosave_timer.timeout.connect(save_timer_state)
 state_autosave_timer.start()
+
+#break overflow connection
+break_review_timer = QTimer(window)
+break_review_timer.setInterval(1000)
+break_review_timer.timeout.connect(check_break_review)
+break_review_timer.start()
 
 #close the app
 sys.exit(app.exec())
