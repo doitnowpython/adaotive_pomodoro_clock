@@ -4,6 +4,8 @@ from email import message
 from pathlib import Path
 import sqlite3
 from contextlib import closing
+from tkinter import dialog
+
 from PySide6.QtWidgets import (
     QApplication,
     QWidget,
@@ -17,7 +19,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QTextEdit,
     QMessageBox,
-    QHBoxLayout)
+    QHBoxLayout, QComboBox)
 import time
 import math
 from PySide6.QtCore import (
@@ -35,7 +37,8 @@ from database import (
     save_session_record,
     fetch_recent_sessions,
     initialize_work_logs,
-    fetch_today_summary)
+    fetch_today_summary,
+    save_break_review)
 from history_window import HistoryWindow
 
 def save_pending_notes():
@@ -791,7 +794,7 @@ def is_break_review_due():
         return False
 
     buffer_seconds = get_break_buffer_seconds(previous_minutes)
-    return get_break_wait_seconds() > buffer_seconds
+    return get_break_wait_seconds() >  buffer_seconds #  test overflow break
 
 def check_break_review():
     if started_at is not None or not is_break_review_due():
@@ -807,29 +810,86 @@ def check_break_review():
     settings.setValue("reviewed_break_wait", wait_id)
     settings.sync()
 
-    message = QMessageBox(window)
-    message.setText("Ready to continue?")
-    message.setText(
-        "Your break has ended and you've been away a little longer. \n\n"
-        "Continue the remaining plan unchanged, or keep waiting?"
+    dialog = QDialog(window)
+    dialog.setWindowTitle("What happened?")
+    dialog.resize(420,220)
+
+    review_layout = QVBoxLayout(dialog)
+
+    explanation = QLabel(
+        "Your break has ended and you've been away a little longer. \n"
+        "How would you like to continue?"
+    )
+    explanation.setWordWrap(True)
+    review_layout.addWidget(explanation)
+
+    review_layout.addWidget(QLabel("Reason (optional)"))
+
+    reason_input = QComboBox()
+    reason_input.addItems([
+        "Prefer not to say",
+        "Fall asleep",
+        "Uregent work come up",
+        "Needed a longer rest",
+        "Got ditracted",
+        "Office Work or something related office",
+        "Somebody called you",
+        "Other"
+    ])
+    review_layout.addWidget(reason_input)
+
+    feedback = QLabel("")
+    feedback.setWordWrap(True)
+    review_layout.addWidget(feedback)
+
+    continue_button = QPushButton("Continue plan")
+    wait_button = QPushButton("Keep waiting")
+
+    buttons = QHBoxLayout()
+    buttons.addWidget(continue_button)
+    buttons.addWidget(wait_button)
+    review_layout.addLayout(buttons)
+
+    continue_button.setAutoDefault(False)
+    wait_button.setDefault(True)
+
+    def submit_review(decision):
+        reason = (
+            reason_input.currentText()
+            if reason_input.currentIndex() > 0
+            else None
+        )
+
+        try:
+            save_break_review(
+                wait_id,
+                reason,
+                decision,
+                get_break_wait_seconds(),
+            )
+        except sqlite3.Error as error:
+            feedback.setText(
+                "Could not save your choice. Please try again."
+            )
+            print("Could not save break review: ", error)
+            return
+
+        if decision == "continue":
+            dialog.accept()
+        else:
+            dialog.reject()
+
+    continue_button.clicked.connect(
+        lambda: submit_review("continue")
+    )
+    wait_button.clicked.connect(
+        lambda: submit_review("wait")
     )
 
-    continue_button = message.addButton(
-        "continue plan",
-        QMessageBox.ButtonRole.AcceptRole
-    )
-
-    wait_button = message.addButton(
-        "Keep waiting",
-        QMessageBox.ButtonRole.RejectRole
-    )
-
-    message.setDefaultButton(wait_button)
-    message.setEscapeButton(wait_button)
-    message.exec()
-
-    if message.clickedButton() == continue_button:
+    if dialog.exec() == QDialog.DialogCode.Accepted:
         start_focus()
+
+
 
 #Simple Time conversion for refference
 print(format_time(1500))

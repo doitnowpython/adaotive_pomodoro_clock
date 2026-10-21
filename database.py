@@ -167,3 +167,33 @@ def fetch_today_summary():
                     """, (today,)).fetchone()
 
         return dict(rows)
+
+def save_break_review(wait_id, reason, decision, extra_seconds):
+    saved_at = datetime.now(
+        ZoneInfo("Asia/Kolkata")
+    ).isoformat(timespec='seconds')
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.execute("""
+            CREATE TABLE IF NOT EXISTS break_reviews (
+                wait_id TEXT PRIMARY KEY,
+                reason TEXT,
+                decision TEXT NOT NULL,
+                extra_seconds REAL NOT NULL,
+                saved_at TEXT NOT NULL
+            )
+       """)
+
+        connection.execute("""
+            INSERT INTO break_reviews (
+            wait_id, reason, decision, extra_seconds, saved_at
+            )
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(wait_id) DO UPDATE SET
+                reason = excluded.reason,
+                decision = excluded.decision,
+                extra_seconds = excluded.extra_seconds,
+                saved_at = excluded.saved_at
+        """,(wait_id, reason, decision, extra_seconds, saved_at))
+
+        connection.commit()
