@@ -794,7 +794,7 @@ def is_break_review_due():
         return False
 
     buffer_seconds = get_break_buffer_seconds(previous_minutes)
-    return get_break_wait_seconds() >  buffer_seconds #  test overflow break
+    return get_break_wait_seconds() > buffer_seconds #  test overflow break
 
 def check_break_review():
     if started_at is not None or not is_break_review_due():
@@ -845,15 +845,33 @@ def check_break_review():
     continue_button = QPushButton("Continue plan")
     wait_button = QPushButton("Keep waiting")
 
+    new_plan_button = QPushButton("Create a new plan")
+    new_plan_button.setAutoDefault(False)
+
+    new_plan_result = 2
+
     buttons = QHBoxLayout()
     buttons.addWidget(continue_button)
     buttons.addWidget(wait_button)
+    buttons.addWidget(new_plan_button)
     review_layout.addLayout(buttons)
 
     continue_button.setAutoDefault(False)
     wait_button.setDefault(True)
 
     def submit_review(decision):
+        answer = QMessageBox.question(
+            dialog,
+            "Replace unfinished plan?",
+            "Discard the remaining schedule and prepare a new plan?\n\n"
+            "Saved sessions, notes, and pending notes will bew kept.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
         reason = (
             reason_input.currentText()
             if reason_input.currentIndex() > 0
@@ -876,6 +894,8 @@ def check_break_review():
 
         if decision == "continue":
             dialog.accept()
+        elif decision == "new_plan":
+            dialog.done(new_plan_result)
         else:
             dialog.reject()
 
@@ -885,9 +905,29 @@ def check_break_review():
     wait_button.clicked.connect(
         lambda: submit_review("wait")
     )
+    new_plan_button.clicked.connect(
+        lambda : submit_review("new_plan")
+    )
 
-    if dialog.exec() == QDialog.DialogCode.Accepted:
+    result = dialog.exec()
+
+    if result == QDialog.DialogCode.Accepted:
         start_focus()
+
+    elif result == new_plan_result:
+        reset_focus()
+
+        if is_compact:
+            toggle_compact()
+
+        plan_preview.setText(
+            "Choose your durations, then click Preview plan."
+        )
+        available_time_input.setFocus()
+
+
+
+
 
 
 

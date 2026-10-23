@@ -223,7 +223,8 @@ class HistoryWindow(QDialog):
             reason = review['reason'] or "Not provided"
             decision = {
                 "continue": "Continued plan",
-                "wait": "Kept waiting"
+                "wait": "Kept waiting",
+                "new_plan" : "Chose to create a new plan",
             }.get(review['decision'], review['decision'])
 
             sections.append(
