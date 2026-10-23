@@ -5,6 +5,7 @@ from pathlib import Path
 import sqlite3
 from contextlib import closing
 from tkinter import dialog
+from urllib import request
 
 from PySide6.QtWidgets import (
     QApplication,
@@ -75,7 +76,8 @@ def save_timer_state():
                 get_session_duration(),
                 max(0.0, elapsed)
             ),
-            "break_wait_started_at" : break_wait_started_at
+            "break_wait_started_at" : break_wait_started_at,
+            "plan_window" : plan_window
         }
 
         settings.setValue("timer_state", json.dumps(state))
@@ -101,12 +103,12 @@ def save_settings():
 def start_focus():
     global started_at, active_plan, current_session_index
     global session_type, remaining_seconds
-    global break_wait_started_at
+    global break_wait_started_at, plan_window
 
     if started_at is not None:
         return 
 
-# Create the plan only for a fresh start
+    # Create the plan only for a fresh start
     if not active_plan:
         active_plan = build_session_plan(
             available_time_input.value(),
@@ -116,20 +118,21 @@ def start_focus():
         current_session_index = 0
         preview_session_plan()
 
+        #adding overflow for break
+        original_start = time.time()
+        requested_seconds = available_time_input.value() * 60
+
+        plan_window = {
+            "started_at" : original_start,
+            "requested_seconds" : requested_seconds,
+            "latest_finished_at" : original_start + requested_seconds * 1.5
+        }
+
     if not active_plan or current_session_index >= len(active_plan):
         return
 
     #Read the CURRENT block, not the first block
     session_type = active_plan[current_session_index][0]
-
-
-
-    #remaining_seconds = get_session_duration()
-    #preview_session_plan()
-
-    #Do not restart a completed plan without Reset.
-    #if current_session_index >= len(active_plan):
-    #    return
 
     for widget in (
         focus_input,
@@ -174,13 +177,15 @@ def start_focus():
     timer.start(100)
     update_countdown()
     save_timer_state()
+    print_plan_window()
 
 def reset_focus():
     global active_plan, current_session_index, session_type
     global started_at, elapsed_before_pause, remaining_seconds
-    global break_wait_started_at
+    global break_wait_started_at, plan_window
 
     timer.stop()
+    plan_window = None
     break_wait_started_at = None
 
     active_plan = []
@@ -671,7 +676,7 @@ def restore_pending_notes():
 def restore_timer_state():
     global active_plan, current_session_index, session_type
     global started_at, elapsed_before_pause, remaining_seconds
-    global break_wait_started_at
+    global break_wait_started_at, plan_window
 
     saved_state = settings.value("timer_state","",type=str)
     if not saved_state:
@@ -683,6 +688,29 @@ def restore_timer_state():
         index = state["index"]
         elapsed = float(state["elapsed"])
         saved_wait_started_at = state.get("break_wait_started_at")
+        saved_plan_window = state.get("plan_window")
+
+        if saved_plan_window is not None:
+            saved_plan_window = {
+                key: float(saved_plan_window[key])
+                for key in (
+                    "started_at",
+                    "requested_seconds",
+                    "latest_finished_at",
+                )
+            }
+
+            if any (
+                not math.isfinite(value) or value <= 0
+                for value in saved_plan_window.values()
+            ):
+                raise ValueError("Invalid plan window")
+
+            if (
+                saved_plan_window["latest_finished_at"]
+                <= saved_plan_window["started_at"]
+            ):
+                raise ValueError("Invalid latest finish.")
 
         if saved_wait_started_at is not None:
             saved_wait_started_at = float(saved_wait_started_at)
@@ -718,6 +746,7 @@ def restore_timer_state():
     session_type =  plan[index][0]
     started_at = None
     break_wait_started_at = saved_wait_started_at
+    plan_window = saved_plan_window
 
     elapsed_before_pause = min(elapsed, get_session_duration())
     remaining_seconds = math.ceil(
@@ -749,6 +778,7 @@ def restore_timer_state():
         widget.setEnabled(False)
 
     preview_session_plan()
+    print_plan_window()
 
 def get_break_wait_seconds():
     if break_wait_started_at is None:
@@ -926,7 +956,18 @@ def check_break_review():
         available_time_input.setFocus()
 
 
+#testing function
+def print_plan_window():
+    if plan_window is None:
+        print("No plan window stored.")
+        return
 
+    for key in ("started_at", "latest_finished_at"):
+        readable_time = time.strftime(
+            "%d %b %Y %H:%M:%S",
+            time.localtime(plan_window[key])
+        )
+        print(f"{key}: {readable_time}")
 
 
 
@@ -960,6 +1001,7 @@ active_plan = []
 current_session_index = 0
 pending_log_sessions_ids = []
 break_wait_started_at = None
+plan_window = None
 
 #app window creation
 app = QApplication(sys.argv)
