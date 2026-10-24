@@ -153,17 +153,20 @@ def start_focus():
             update_plan_finish_display()
             save_timer_state()
 
-            QMessageBox.information(
-                window,
-                "Plan needs review",
-                "The remaining sessions cannot finish before:"
-                "the latest allowed finish.\n\n"
-                "The timer has not started. Your unfinished "
-                "sessions and saved notes are still here.\n\n"
-                "You can keep the plan for now, or use Reset plan "
-                "to explicitly discard its remaining schedule "
-                "and prepare a new one."
+            preview_text = get_revised_plan_preview_text()
+
+            review_message = QMessageBox(window)
+            review_message.setWindowTitle("Revised plan preview")
+            review_message.setText(
+                "The current schedule no longer fits before "
+                "the original deadline."
             )
+            review_message.setDetailedText(preview_text)
+            review_message.setStandardButtons(
+                QMessageBox.StandardButton.Ok
+            )
+            review_message.exec()
+
             return False
     #Read the CURRENT block, not the first block
     session_type = active_plan[current_session_index][0]
@@ -627,6 +630,136 @@ def build_session_plan(total_minutes, focus_minutes, break_minutes):
 
     return plan
 
+def build_revised_remaining_plan(
+        remaining_plan,
+        available_seconds,
+        elapsed_current = 0.0
+):
+    budget = max(0.0,available_seconds)
+    proposal =[]
+
+    for index,(kind, minutes) in enumerate(remaining_plan):
+        elapsed = elapsed_current if index == 0 else 0.0
+        elapsed = min(minutes * 60, max(0.0, elapsed))
+
+        if kind == "break":
+            break_left = minutes * 60 - elapsed
+
+            # keep the break only if some focus can follow it
+            if budget < break_left + 60:
+                break
+
+            proposal.append((kind,minutes))
+            budget -= break_left
+
+        else:
+            fitted_minutes = min (
+                minutes,
+                int(( budget + elapsed ) // 60 )
+            )
+            focus_left = fitted_minutes * 60 - elapsed
+
+            if focus_left <= 0:
+                break
+
+            #Avoid proposing a newly shortened focus under one minute.
+            if fitted_minutes < minutes and focus_left < 60:
+                break
+
+            proposal.append((kind, fitted_minutes))
+            budget -= focus_left
+
+            if fitted_minutes < minutes:
+                break
+
+        # A revised work schedule should not end with an unused break.
+    if proposal and proposal[-1][0] == "break":
+        proposal.pop()
+
+    return proposal
+
+def get_revised_plan_preview_text():
+    if plan_window is None:
+        return "This older plan has no saved deadline."
+
+    if started_at is not None:
+        return "Pause the timer before previewing a revised plan."
+
+    if not active_plan or current_session_index >= len(active_plan):
+        return "There are no remaining sessions"
+
+    available_seconds = max(
+        0.0,
+        plan_window["latest_finished_at"] - time.time()
+    )
+
+    remaining_plan = active_plan[current_session_index:]
+    elapsed = min(
+        get_session_duration(),
+        max(0.0, elapsed_before_pause)
+    )
+
+    proposal = build_revised_remaining_plan(
+        remaining_plan,
+        available_seconds,
+        elapsed_current=elapsed
+    )
+
+    if not proposal:
+        return (
+            "There is not enough time for a revised schedule "
+            "under the current rules.\n\n"
+            "Your current plan is unchanged. You can leave it "
+            "paused or explicitly reset it to create a new plan"
+        )
+
+    original_focus_seconds = sum(
+        minutes * 60
+        for kind, minutes in remaining_plan
+        if kind == "focus"
+    )
+
+    proposed_focus_seconds = sum(
+        minutes * 60
+        for kind, minutes in proposal
+        if kind == "focus"
+    )
+
+    focus_left_out = original_focus_seconds - proposed_focus_seconds
+
+    proposed_seconds =(
+        sum(minutes *60 for kind, minutes in proposal) - elapsed
+    )
+
+    lines = [
+        "Proposed remaining schedule:",
+        ""
+    ]
+
+    for index, (kind, minutes) in enumerate(proposal):
+        seconds_left = minutes * 60
+
+        if index == 0:
+            seconds_left -= elapsed
+
+        lines.append(
+            f"{index + 1}. {kind.capitalize()}: "
+            f"{format_time(math.ceil(seconds_left))} remaining"
+        )
+
+    lines.extend([
+        "",
+        f"Total remaining: {format_time(math.ceil(proposed_seconds))}",
+        f"Focus time left out: {format_time(focus_left_out)}",
+        "",
+        "Durations are shown as minutes:seconds.",
+        "The original deadline stays fixed.",
+        "Preview only - your plan has not been changed."
+    ])
+
+    return "\n".join(lines)
+
+
 def preview_session_plan():
     available_minutes = available_time_input.value()
 
@@ -940,7 +1073,7 @@ def check_break_review():
 
         reason = (
             reason_input.currentText()
-            if reason_input.currentText() > 0
+            if reason_input.currentIndex() > 0
             else None
         )
 
@@ -1022,9 +1155,10 @@ def update_plan_finish_display():
 
     if current_session_index >= len(active_plan):
         plan_finish_label.setText("Plan completed.")
+        return
 
     now = time.time()
-    expected_finish = time.time() + get_remaining_plan_seconds()
+    expected_finish = now + get_remaining_plan_seconds()
 
     expected_text = time.strftime(
         "%d %b, %I:%M:%S %p",
@@ -1311,6 +1445,31 @@ for minutes in (7,15,20,30,60,90,120):
         f"Break {minutes} min -> buffer"
         f"{get_break_buffer_seconds(minutes)}"
     )
+
+example_remaining = [
+    ("focus", 25),
+    ("break", 7),
+    ("focus", 25)
+]
+
+print(
+    "Revised with 40 minutes:",
+    build_revised_remaining_plan(example_remaining, 40 * 60)
+)
+
+print(
+    "Revised with 30 minutes:",
+    build_revised_remaining_plan(example_remaining, 30 * 60)
+)
+
+print(
+    "Already worked 5 minutes; 20 minutes left:",
+    build_revised_remaining_plan(
+        example_remaining,
+        20*60,
+        elapsed_current= 5*60
+    )
+)
 
 # window position and show
 window.move(
