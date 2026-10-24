@@ -131,6 +131,40 @@ def start_focus():
     if not active_plan or current_session_index >= len(active_plan):
         return
 
+    if plan_window is not None:
+        now = time.time()
+        latest_finish = plan_window["latest_finished_at"]
+        expected_finish = now + get_remaining_plan_seconds()
+
+        if now >= latest_finish or expected_finish > latest_finish:
+            timer.stop()
+
+            session_label.setText("PLAN NEEDS REVIEW")
+            status_label.setText(
+                "The remaining sessions no longer fit"
+                "within this plan's deadline."
+            )
+
+            start_button.setText("Review before continuing")
+            start_button.setEnabled(True)
+            pause_button.setEnabled(False)
+            skip_button.setEnabled(True)
+
+            update_plan_finish_display()
+            save_timer_state()
+
+            QMessageBox.information(
+                window,
+                "Plan needs review",
+                "The remaining sessions cannot finish before:"
+                "the latest allowed finish.\n\n"
+                "The timer has not started. Your unfinished "
+                "sessions and saved notes are still here.\n\n"
+                "You can keep the plan for now, or use Reset plan "
+                "to explicitly discard its remaining schedule "
+                "and prepare a new one."
+            )
+            return False
     #Read the CURRENT block, not the first block
     session_type = active_plan[current_session_index][0]
 
@@ -178,6 +212,7 @@ def start_focus():
     update_countdown()
     save_timer_state()
     print_plan_window()
+    return True
 
 def reset_focus():
     global active_plan, current_session_index, session_type
@@ -291,6 +326,7 @@ def toogle_compact():
     preview_plan_button.setVisible(not is_compact)
     plan_preview.setVisible(not is_compact)
     history_button.setVisible(not is_compact)
+    plan_finish_label.setVisible(not is_compact)
 
     font = timer_label.font()
 
@@ -416,12 +452,11 @@ def finish_session(outcome = "completed"):
 
         if session_type == "break":
             # Start the break automatically after focus.
-            start_focus()
-
-            notify_user(
-                "Break Started",
-                f"Take a {remaining_seconds // 60}-minute break. "
-            )
+            if start_focus():
+                notify_user(
+                    "Break Started",
+                    f"Take a {remaining_seconds // 60}-minute break. "
+                )
 
         else:
             # Prepare the next focus, but wait for Start.
@@ -890,21 +925,22 @@ def check_break_review():
     wait_button.setDefault(True)
 
     def submit_review(decision):
-        answer = QMessageBox.question(
-            dialog,
-            "Replace unfinished plan?",
-            "Discard the remaining schedule and prepare a new plan?\n\n"
-            "Saved sessions, notes, and pending notes will bew kept.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
-        )
+        if decision == "new_plan":
+            answer = QMessageBox.question(
+                dialog,
+                "Replace unfinished plan?",
+                "Discard the remaining schedule and prepare a new plan?\n\n"
+                "Saved sessions, notes, and pending notes will be kept.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
 
-        if answer != QMessageBox.StandardButton.Yes:
-            return
+            if answer != QMessageBox.StandardButton.Yes:
+                return
 
         reason = (
             reason_input.currentText()
-            if reason_input.currentIndex() > 0
+            if reason_input.currentText() > 0
             else None
         )
 
@@ -948,14 +984,95 @@ def check_break_review():
         reset_focus()
 
         if is_compact:
-            toggle_compact()
+            toogle_compact()
 
         plan_preview.setText(
             "Choose your durations, then click Preview plan."
         )
         available_time_input.setFocus()
 
+def get_remaining_plan_seconds():
+    if not active_plan or current_session_index >= len(active_plan):
+        return 0.0
 
+    elapsed = elapsed_before_pause
+
+    if started_at is not None:
+        elapsed += time.monotonic() - started_at
+
+    current_remaining = max(
+        0.0,
+        get_session_duration() - elapsed
+    )
+
+    future_seconds = sum(
+        minutes * 60
+        for kind, minutes
+        in active_plan[current_session_index + 1:]
+    )
+
+    return current_remaining + future_seconds
+
+def update_plan_finish_display():
+    if not active_plan:
+        plan_finish_label.setText(
+            "Finish times will appear when you start a plan."
+        )
+        return
+
+    if current_session_index >= len(active_plan):
+        plan_finish_label.setText("Plan completed.")
+
+    now = time.time()
+    expected_finish = time.time() + get_remaining_plan_seconds()
+
+    expected_text = time.strftime(
+        "%d %b, %I:%M:%S %p",
+        time.localtime(expected_finish)
+    )
+
+    heading = (
+        "Expected finish"
+        if started_at is not None
+        else "Expected finish if resumed now"
+    )
+
+    if plan_window is None:
+        latest_text = "Not available for this older plan"
+        fit_message = "A deadline check is not available for this older plan."
+    else:
+        latest_finish = plan_window["latest_finished_at"]
+        latest_text = time.strftime(
+            "%d %b, %I:%M:%S %p",
+            time.localtime(latest_finish)
+        )
+        spare_seconds = latest_finish - expected_finish
+
+        if now >= latest_finish:
+            fit_message = (
+                "Deadline reached - the remaining plan needs review"
+            )
+        elif spare_seconds >= 0:
+            spare_minutes = int(spare_seconds // 60)
+
+            if spare_minutes == 0:
+                fit_message = "Plan fits - less than 1 minute spare."
+            else:
+                fit_message = (
+                    f"Plan fits - {spare_minutes} minutes spare."
+                )
+        else:
+            overrun_minutes = math.ceil(-spare_seconds / 60)
+            fit_message = (
+                "Plan needs adjustment - expected finish is "
+                f"about {overrun_minutes} min beyond the deadline. "
+            )
+
+    plan_finish_label.setText(
+        f"{heading}: {expected_text}\n"
+        f"Latest allowed finish: {latest_text}\n\n"
+        f"{fit_message}"
+    )
 #testing function
 def print_plan_window():
     if plan_window is None:
@@ -1002,6 +1119,7 @@ current_session_index = 0
 pending_log_sessions_ids = []
 break_wait_started_at = None
 plan_window = None
+plan_window = None
 
 #app window creation
 app = QApplication(sys.argv)
@@ -1015,7 +1133,7 @@ initialize_work_logs()
 #app window settings
 window = QWidget()
 window.setWindowTitle("My Focus Clock")
-window.resize(300, 200)
+window.resize(300, 650)
 
 #history window linking
 history_window = HistoryWindow(window)
@@ -1042,6 +1160,12 @@ timer.timeout.connect(update_countdown)
 status_label = QLabel("Ready!")
 timer_label = QLabel(format_time(remaining_seconds))
 status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+plan_finish_label = QLabel(
+    "Finish times will appear when you start a plan."
+)
+plan_finish_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+plan_finish_label.setWordWrap(True)
 
 session_label = QLabel("FOCUS - READY")
 session_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -1094,7 +1218,7 @@ layout.setSpacing(12)
 layout.addWidget(session_label)
 layout.addWidget(timer_label)
 layout.addWidget(status_label)
-#layout.addWidget(timer_label)
+layout.addWidget(plan_finish_label)
 layout.addWidget(start_button)
 layout.addWidget(pause_button)
 #layout.addWidget(skip_button)
@@ -1215,6 +1339,14 @@ break_review_timer = QTimer(window)
 break_review_timer.setInterval(1000)
 break_review_timer.timeout.connect(check_break_review)
 break_review_timer.start()
+
+#plan times for overflow
+plan_display_timer = QTimer(window)
+plan_display_timer.setInterval(1000)
+plan_display_timer.timeout.connect(update_plan_finish_display)
+plan_display_timer.start()
+
+update_plan_finish_display()
 
 #close the app
 sys.exit(app.exec())
