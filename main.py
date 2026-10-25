@@ -153,7 +153,8 @@ def start_focus():
             update_plan_finish_display()
             save_timer_state()
 
-            preview_text = get_revised_plan_preview_text()
+            plan_data = get_revised_plan_data()
+            preview_text = get_revised_plan_preview_text(plan_data)
 
             review_message = QMessageBox(window)
             review_message.setWindowTitle("Revised plan preview")
@@ -161,10 +162,26 @@ def start_focus():
                 "The current schedule no longer fits before "
                 "the original deadline."
             )
-            review_message.setDetailedText(preview_text)
-            review_message.setStandardButtons(
-                QMessageBox.StandardButton.Ok
+            review_message.setInformativeText(
+                "Show Details to review the proposal.\n"
+                "Apply will use this schedule and resume the timer."
             )
+            review_message.setDetailedText(preview_text)
+
+            apply_button = review_message.addButton(
+                "Apply and resume",
+                QMessageBox.ButtonRole.AcceptRole
+            )
+            cancel_button = review_message.addButton(
+                QMessageBox.StandardButton.Cancel
+            )
+            review_message.setDefaultButton(cancel_button)
+            review_message.setEscapeButton(cancel_button)
+
+            apply_button.setEnabled(
+                plan_data is not None and bool(plan_data["proposal"])
+            )
+
             review_message.setStyleSheet(
                 """
                     QLabel{
@@ -180,7 +197,62 @@ def start_focus():
             )
             review_message.exec()
 
-            return False
+            if review_message.clickedButton() != apply_button:
+                return False
+
+            if plan_data is None:
+                return False
+
+            # Ensure the timer still matches the preview's snapshot.
+            state_unchanged = (
+                started_at is None
+                and plan_window is not None
+                and plan_window["latest_finished_at"]
+                == plan_data["deadline"]
+                and current_session_index >= plan_data["session_index"]
+                and [tuple(session) for session in active_plan]
+                == plan_data["original_plan"]
+                and elapsed_before_pause == plan_data["elapsed"]
+            )
+
+            if not state_unchanged:
+                QMessageBox.information(
+                    window,
+                    "Preview needs refreshing",
+                    "The timer state has changed. "
+                    "Open the review again for a fresh proposal."
+                )
+                return False
+
+            #Time kept passing while the dialog was open.
+            if not revised_plan_still_fits(
+                plan_data["proposal"],
+                elapsed_current = plan_data["elapsed"],
+                latest_finish = plan_data["deadline"]
+            ):
+                QMessageBox.information(
+                    window,
+                    "Proposal no longer fits",
+                    "This proposal no longer fits before the deadline.\n"
+                    "Your plan is unchanged. Open the review again. "
+                )
+                return False
+
+            #Preserve completed session and replace unfinished ones.
+            active_plan =(
+                active_plan[:current_session_index]
+                + list(plan_data["proposal"])
+            )
+
+            remaining_seconds = max(
+                0.0,
+                active_plan[current_session_index][1] * 60
+                - elapsed_before_pause
+            )
+            save_timer_state()
+            update_plan_finish_display()
+
+
     #Read the CURRENT block, not the first block
     session_type = active_plan[current_session_index][0]
 
