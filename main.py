@@ -678,6 +678,28 @@ def build_revised_remaining_plan(
 
     return proposal
 
+def revised_plan_still_fits(
+        proposal,
+        elapsed_current,
+        latest_finish,
+        now = None
+):
+    if not proposal:
+        return False
+
+    if now is None:
+        now = time.time()
+
+    remaining_seconds = (
+        sum(minutes * 60 for kind, minutes in proposal)
+        - elapsed_current
+    )
+
+    if remaining_seconds <= 0 or now >= latest_finish:
+        return False
+
+    return now+remaining_seconds <= latest_finish
+
 def get_revised_plan_preview_text():
     if plan_window is None:
         return "This older plan has no saved deadline."
@@ -1468,6 +1490,38 @@ print(
         example_remaining,
         20*60,
         elapsed_current= 5*60
+    )
+)
+
+test_proposal = [("focus",2)]
+
+print(
+    "Proposal fits:",
+    revised_plan_still_fits(
+        test_proposal,
+        elapsed_current = 2,
+        latest_finish=1120,
+        now=1000
+    )
+)
+
+print(
+    "Proposal become too late:",
+    revised_plan_still_fits(
+        test_proposal,
+        elapsed_current = 2,
+        latest_finish=1120,
+        now=1003
+    )
+)
+
+print(
+    "Empty Proposal:",
+    revised_plan_still_fits(
+        [],
+        elapsed_current = 0,
+        latest_finish=1120,
+        now=1000
     )
 )
 
