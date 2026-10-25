@@ -165,6 +165,19 @@ def start_focus():
             review_message.setStandardButtons(
                 QMessageBox.StandardButton.Ok
             )
+            review_message.setStyleSheet(
+                """
+                    QLabel{
+                        min-width: 500px;
+                        font-size: 14px;
+                    }
+                    QTextEdit{
+                        min-width: 500px;
+                        min-height: 250px;
+                        font-size: 14px;
+                    }
+                """
+            )
             review_message.exec()
 
             return False
@@ -700,32 +713,51 @@ def revised_plan_still_fits(
 
     return now+remaining_seconds <= latest_finish
 
-def get_revised_plan_preview_text():
-    if plan_window is None:
-        return "This older plan has no saved deadline."
-
-    if started_at is not None:
-        return "Pause the timer before previewing a revised plan."
+def get_revised_plan_data():
+    if plan_window is None or started_at is not None:
+        return None
 
     if not active_plan or current_session_index >= len(active_plan):
-        return "There are no remaining sessions"
+        return None
 
-    available_seconds = max(
-        0.0,
-        plan_window["latest_finished_at"] - time.time()
-    )
+    deadline = plan_window["latest_finished_at"]
+    available_seconds = max(0.0, deadline - time.time())
 
     remaining_plan = active_plan[current_session_index:]
+
     elapsed = min(
-        get_session_duration(),
+        remaining_plan[0][1] * 60,
         max(0.0, elapsed_before_pause)
     )
 
     proposal = build_revised_remaining_plan(
         remaining_plan,
         available_seconds,
-        elapsed_current=elapsed
+        elapsed_current = elapsed
     )
+
+    return {
+        "original_plan" : [tuple(session) for session in active_plan],
+        "session_index" : current_session_index,
+        "elapsed": elapsed,
+        "deadline" : deadline,
+        "proposal" : proposal
+    }
+
+def get_revised_plan_preview_text(plan_data = None):
+    if plan_data is None:
+        plan_data = get_revised_plan_data()
+
+    if plan_data is None:
+        return (
+            "A revised preview is not available. "
+            "The timer must be paused with unfinished sessions "
+            "and a saved deadline. "
+        )
+
+    remaining_plan = plan_data["original_plan"][plan_data["session_index"]:]
+    elapsed = plan_data["elapsed"]
+    proposal = plan_data["proposal"]
 
     if not proposal:
         return (
