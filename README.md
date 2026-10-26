@@ -4,11 +4,33 @@ A Python desktop focus clock being built for personal productivity and, later, f
 
 The long-term goal is to keep ongoing tasks connected across sessions and plans, reduce repeated data entry, and suggest work and recovery schedules using task demands and user-reported fatigue.
 
-**Status:** Active development. The core timer, logging, linked notes, History window, daily summary, saved preferences, draft autosave, basic timer recovery, post-break waiting, hidden-buffer checks, interruption reviews, and interruption history are implemented. Recovery accuracy still has a known issue. Bounded rescheduling, sleep/lock reconciliation, task-based adaptation, and family profiles remain planned.
+**Status:** Active development. The core timer, logging, linked notes, History window, daily summary, saved preferences, draft autosave, post-break waiting, hidden-buffer checks, interruption reviews/history, and Create a new plan are implemented. Fixed plan deadlines, revised-plan previews, Apply and resume, and the corrected active-plan display are now implemented. Normal pause → close → reopen recovery was confirmed by the author on 26 October. Unexpected-close recovery accuracy, sleep/lock reconciliation, task-based adaptation, and family profiles remain open.
 
-**Roadmap updated:** 22 October 2026.
+**Roadmap updated:** 26 October 2026.
 
-This README combines the current GitHub code, author-reported tests through 21 October, and scheduling decisions agreed on 22 October. Features explicitly marked **planned** below are not yet implemented.
+This README reflects code through commit `c0691e1` (Fix active plan preview after revision and restore), author-reported tests through 26 October, and the retained scheduling decisions agreed on 20–22 October. Features explicitly marked **planned** below are not yet implemented. Completed portions of earlier designs are identified separately from remaining work.
+
+The complete previous README is preserved unchanged in [the 22 October archive](docs/archive/README_2026-10-22.md). Existing design details, future scope, and historical estimates remain below; the archive preserves the exact earlier wording and status.
+
+## Progress checkpoint — 26 October 2026
+
+| Area | Current status |
+| --- | --- |
+| Replacement plan | Create a new plan asks for confirmation, clears the unfinished schedule, and retains saved records and pending notes. |
+| Fixed maximum window | A fresh plan saves its start, requested duration, and latest finish at start + 1.5 × requested duration. Pause, resume, and reopening keep that deadline. |
+| Finish display and checks | Expected finish and latest allowed finish are displayed; starting/resuming checks whether unfinished sessions fit. |
+| Revised proposal | A paused plan can preview a shortened remaining schedule, current-block time left, and focus time left out. Previewing does not change the plan. |
+| Apply and resume | Applies the displayed proposal only after checking the plan snapshot and current deadline; preserves completed blocks, elapsed work, and the original deadline. Cancel leaves the plan unchanged. |
+| Schedule display | Shows the actual active plan after revision and restore; shows an input-based preview when no plan exists. Listed durations are full blocks, including time already worked. |
+| Normal close/reopen | Author confirmed the revised schedule, remaining countdown, paused state on restore, and original deadline are preserved. |
+| Still open | Crash/forced-stop timing accuracy, transition consistency, sleep/lock handling, optional earlier finish limits, and durable deferred-task tracking. |
+
+Validation evidence: the author exercised Apply, Cancel, expiry while the review dialog was open, schedule refresh, and normal pause → close → reopen. Screenshots and logs show the revised single-focus plan and an unchanged deadline. The author separately confirmed remaining-time restoration. Earlier isolated function checks covered calculation, Apply/Cancel, deadline expiry, and save/restore with simulated UI/settings; they were not a full PySide6 GUI test. This checkpoint does not resolve the older unexpected-close timing discrepancy.
+
+Recent implementation commits:
+
+- `02c4050`: Apply revised plans with deadline validation and resume support.
+- `c0691e1`: Fix active plan preview after revision and restore, including exact session-index matching in the proposal snapshot check.
 
 ## Working features
 
@@ -37,11 +59,17 @@ This README combines the current GitHub code, author-reported tests through 21 O
 - Timer-state saving on normal exit and state changes, with a five-second periodic autosave intended to support unexpected-close recovery. See the accuracy issue below.
 - Persisted post-break waiting timestamps and elapsed extra-time calculation.
 - Hidden break-buffer calculation using interpolated defaults for breaks up to 120 minutes.
-- A review prompt shown once per waiting period, with **Continue plan** and **Keep waiting** choices.
+- A review prompt shown once per waiting period, with **Continue plan**, **Keep waiting**, and confirmed **Create a new plan** choices.
 - Optional interruption reasons and decisions saved in SQLite, with review time and extra waiting seconds.
 - **History → View Interruptions** displays recent saved reviews, including the reason, choice, extra time at review, and IST timestamp.
+- Persisted original start, requested plan duration, and fixed 1.5× latest-finish deadline.
+- Live expected-finish/latest-finish display and a deadline check before starting/resuming sessions.
+- Revised-plan preview with remaining durations and focus time left out, in an enlarged review dialog.
+- **Apply and resume** uses the displayed proposal after snapshot and fresh deadline validation; expired proposals are rejected without changing the plan.
+- Completed blocks and current elapsed time are retained when replacing the unfinished schedule.
+- Active-plan preview refreshes after Apply, reset, and restore, using the actual plan rather than regenerating the original schedule from input values.
 
-Settings and draft persistence were tested by the author on 17 October. Normal-exit and unexpected-close timer recovery were tested on 19–20 October. On 20 October, the periodic autosave setup was moved out of the restore function so it also starts on fresh launches; the restore checks were corrected to reject `index == len(plan)` and allow zero elapsed seconds. These corrections were confirmed locally, but a remaining recovery-timing discrepancy is still open.
+Settings and draft persistence were tested by the author on 17 October. Normal-exit and unexpected-close timer recovery were tested on 19–20 October. On 20 October, the periodic autosave setup was moved out of the restore function so it also starts on fresh launches; the restore checks were corrected to reject `index == len(plan)` and allow zero elapsed seconds. These corrections were confirmed locally, but a remaining recovery-timing discrepancy is still open. On 26 October, the author confirmed normal pause → close → reopen recovery of a revised plan, including remaining time and the original deadline. Forced-stop recovery remains a separate unresolved issue.
 
 ## Technology
 
@@ -83,8 +111,12 @@ Keep `sound/session_chime.wav` in its existing location. Desktop notifications d
 6. Open **History** to view session records and today's focus summary.
 7. Select a row and click **View Notes** to read its saved notes. Click **Refresh** to update history and the summary.
 8. On reopening an unfinished plan, use **Resume** to continue or **Reset plan** to discard it. Reopening currently excludes closed-app time from active-session progress; an already-started post-break wait uses a persisted timestamp and includes elapsed time while closed. Sleep-aware session reconciliation is a separate planned change.
-9. If the hidden post-break buffer is exceeded, optionally provide a reason and choose **Continue plan** or **Keep waiting**. The latter leaves focus stopped; use Start later.
+9. If the hidden post-break buffer is exceeded, optionally provide a reason and choose **Continue plan**, **Keep waiting**, or **Create a new plan**. Keep waiting leaves focus stopped; creating a new plan requires confirmation and keeps saved records and pending notes.
 10. Use **History → View Interruptions** to inspect saved reviews. Extra time is recorded at the moment a review is submitted; it is not necessarily the final total if the user keeps waiting.
+11. At the first Start, the app fixes the latest allowed finish at 1.5 × the requested plan duration after that start. Pauses and closed-app time consume this window without being counted as active work.
+12. If Start/Resume finds the remaining schedule no longer fits, open **Show Details** in the revised-plan dialog. Review the proposed remaining schedule and focus time left out. **Cancel** keeps the plan paused; **Apply and resume** updates and resumes it only if the same proposal still fits.
+13. If the proposal expires while the dialog is open, reopen the review for a fresh proposal. If no valid schedule fits, leave it paused or explicitly reset to create a new plan. The old deadline is never silently extended.
+14. The lower **Current plan** display lists full block durations, including elapsed work. The countdown shows the current block's remaining time. The input boxes retain their configured values and do not describe the revised schedule.
 
 ## Project structure
 
@@ -96,6 +128,7 @@ Keep `sound/session_chime.wav` in its existing location. Desktop notifications d
 | `database_fetch.py` | Development helper for inspecting records; currently contains a machine-specific database path |
 | `sound/session_chime.wav` | Session-transition sound |
 | `Pomodoro_Clock_Project_Checkpoint.md` | Earlier project checkpoint; may not reflect the latest progress |
+| `docs/archive/README_2026-10-22.md` | Exact previous README, retained as historical documentation |
 | `pomodoro.db` | Local runtime data, created by the application |
 
 Some work-log SQL and plan-building logic remain in `main.py`. Further separation will happen gradually while preserving working behaviour.
@@ -108,7 +141,7 @@ Some work-log SQL and plan-building logic remain in `main.py`. Further separatio
 - A task name in a note is not yet a reusable task. Cross-plan task grouping is still planned.
 - Settings, active plans, pending-note queues, and drafts now restore after closing. Timer recovery reopens paused; it does not resume automatically.
 - Resetting an active block does not currently save it as an interrupted session.
-- **Known bug — recovery accuracy:** after an unexpected stop, the recovered countdown has differed by roughly 2–7 seconds and sometimes more than 10 seconds in author testing. A five-second autosave interval is not a proven maximum-loss guarantee. Record this as unresolved and investigate save timing, event-loop delays, and restored values.
+- **Known bug — unexpected-close recovery accuracy:** after an unexpected stop, the recovered countdown has differed by roughly 2–7 seconds and sometimes more than 10 seconds in author testing. A five-second autosave interval is not a proven maximum-loss guarantee. Record this as unresolved and investigate save timing, event-loop delays, and restored values.
 - Laptop-sleep and screen-lock handling are not implemented. A stopped Python process cannot sound an alarm while the laptop is suspended.
 - Database writes and QSettings snapshots are separate operations. Crash-safe duplicate prevention and reconciliation at session transitions still need work.
 - Restored window position may be nearby rather than pixel-exact; this is accepted for now.
@@ -118,9 +151,11 @@ Some work-log SQL and plan-building logic remain in `main.py`. Further separatio
 - A session's entire duration is assigned to its save date in IST. Sessions crossing midnight are not split between days.
 - The daily summary updates when History opens or Refresh is clicked; it is not a live counter.
 - Available time includes breaks. The planner can leave time unused when a full break would leave no time for another focus block.
-- Pauses and post-break waiting currently extend the real-world time needed to finish. The planned 1.5× maximum window, expected-finish display, and deadline-aware rescheduling are not implemented.
+- Pauses and post-break waiting extend the expected finish within a fixed 1.5× maximum window. Start/Resume now blocks an unfitting plan and offers a revised proposal. The deadline display refreshes periodically, but proactive review before the ordinary post-break buffer expires and sleep-aware enforcement still need work.
+- Revised proposals use whole-minute block lengths, account for elapsed current-block time, retain breaks only when focus can follow, and remove trailing unused breaks. Newly shortened focus remainders under one minute are not proposed; an unchanged current focus may have under one minute left.
+- Focus time left out is disclosed before Apply, but removed work is not yet stored as a deferred task or durable revision history. Optional earlier availability limits and fitting the original expected finish remain planned.
 - The break control currently permits values below seven minutes. A mandatory minimum-break rule has not been finalized.
-- Focus-to-break transitions are automatic; break-to-focus transitions wait for user confirmation. Basic interruption review is implemented, but **Create a new plan**, constrained recalculation, fatigue-aware readiness checks, and review of long explicit pauses are not yet implemented.
+- Focus-to-break transitions are automatic; break-to-focus transitions wait for user confirmation. Interruption review, **Create a new plan**, and deadline-constrained recalculation are implemented. Fatigue-aware readiness checks, separate pause-duration records, and a dedicated long-pause review threshold remain planned. A pause already triggers schedule review on Resume when the remaining plan no longer fits.
 - The review prompt is marked as shown before it opens. Closing it with X/Escape does not save a response and leaves focus stopped; the same wait will not automatically prompt again. Review persistence and recovery still need broader reliability checks.
 
 ### Keep personal data out of Git
@@ -183,7 +218,7 @@ This is a productivity feature, not a medical assessment. The app will not diagn
 
 ## Planned sleep, lock, pause, and interruption handling
 
-**Design agreed on 20 October 2026; partially implemented through 21 October.** Manual focus start after breaks, waiting-time persistence, hidden-buffer checks, optional reasons, Continue/Wait choices, and interruption history are implemented. Sleep/lock reconciliation, long-pause review, expanded replanning, and repeating alarms remain planned. These rules do not change the locked Family Planner V1 scope.
+**Design agreed on 20 October 2026; progress updated through 26 October.** Manual focus start after breaks, waiting-time persistence, hidden-buffer checks, optional reasons, Continue/Wait/New plan choices, interruption history, and deadline-constrained revised-plan Apply/resume are implemented. Sleep/lock reconciliation, dedicated long-pause review, deferred-task persistence, and repeating alarms remain planned. The following sections retain the full intended design; sleep, lock, and alarm behaviour is not yet implemented. These rules do not change the locked Family Planner V1 scope.
 
 ### Keep system power settings unchanged
 
@@ -229,16 +264,16 @@ Later, the clock may adjust buffers using whole-day activity, task demands, fati
 
 Ask **“What happened, and how would you like to continue?”** An optional reason can include fell asleep, urgent work, longer rest, or another reason.
 
-**Currently available:** Continue plan and Keep waiting, with optional reason capture and saved review history.
+**Currently available:** Continue plan, Keep waiting, and confirmed Create a new plan, with optional reason capture and saved review history. If a start/resume attempt no longer fits, the revised-plan dialog adds Cancel and Apply and resume.
 
-The planned expanded choices are:
+The original intended choices are retained below with their current status:
 
-1. **Continue the remaining plan unchanged:** preserve unfinished session lengths and shift their times forward by actual delays, provided the result fits within the fixed maximum finish time described below. Keeping session lengths unchanged does not mean unlimited deadline extensions.
-2. **Recalculate the remaining plan:** with user confirmation, shorten or defer work to fit a chosen finish deadline, within the existing ceiling. Fitting the original expected finish time is an optional choice, not the automatic default. Preserve completed records and avoid duplicate sessions.
-3. **Create a new plan:** confirm before replacing the unfinished schedule; retain completed records, notes, and interruption history. A new plan and any new completion window must be explicitly chosen.
-4. **Keep waiting:** leave focus stopped. Waiting continues to consume the existing real-world window; dismissing a prompt does not reset the ceiling.
+1. **Continue the remaining plan unchanged — implemented for start/resume:** preserve unfinished session lengths and shift their times forward by actual delays, provided the result fits within the fixed maximum finish time described below. Keeping session lengths unchanged does not mean unlimited deadline extensions.
+2. **Recalculate the remaining plan — partially implemented:** with user confirmation, shorten or defer work to fit a chosen finish deadline, within the existing ceiling. The current implementation shortens/removes unfinished blocks to fit the existing latest-finish deadline after explicit Apply. Saving deferred work as tasks and choosing an earlier finish limit remain planned. Fitting the original expected finish time is an optional planned choice, not the automatic default. Preserve completed records and avoid duplicate sessions; crash-time duplicate prevention still needs strengthening.
+3. **Create a new plan — implemented:** confirm before replacing the unfinished schedule; retain completed records, notes, and interruption history. A new plan and any new completion window must be explicitly chosen.
+4. **Keep waiting — implemented:** leave focus stopped. Waiting continues to consume the existing real-world window; dismissing a prompt does not reset the ceiling.
 
-Explicit **Pause** freezes the countdown and records interruption time separately. A long pause should offer the same review choices on resume; paused time must not silently become focused work. The exact pause-review threshold needs a separate definition because a focus pause has no allocated break duration to use as its percentage base.
+Explicit **Pause** currently freezes the countdown and excludes paused time from active work. Resume checks the fixed plan deadline and offers revision if required. Separately recording pause duration and offering reason/recovery review after a long pause remain planned. The exact pause-review threshold needs a separate definition because a focus pause has no allocated break duration to use as its percentage base.
 
 ### Alarm behaviour
 
@@ -252,34 +287,34 @@ Explicit **Pause** freezes the countdown and records interruption time separatel
 
 Completed foundations: manual focus start after breaks, persisted waiting timestamps, buffer calculation, one-time review prompts, optional reason/choice storage, and interruption history.
 
-Remaining steps:
+Original implementation sequence, with current progress:
 
-1. Add **Create a new plan** with confirmation, preserving saved records and pending notes.
-2. Persist the original plan start, requested duration, expected finish, and fixed maximum finish time.
-3. Shift the remaining schedule for actual delays and check that it fits inside the ceiling.
-4. Add user-approved recalculation, shortening, and deferral when it no longer fits.
-5. Add the focus-start reminder and optional phone backup prompt.
-6. Reconcile elapsed focus/break blocks after sleep and detect lock/away states.
-7. Apply equivalent review to explicit pauses with a defined threshold.
-8. Add the repeating alarm, dismissal, volume control, and workflow checks.
-9. Investigate recovery accuracy and harden database/snapshot consistency.
+1. **Done:** Create a new plan with confirmation, preserving saved records and pending notes.
+2. **Core done:** Persist original plan start, requested duration, and fixed maximum finish time; expected finish is calculated live rather than stored as a separate original expected-finish timestamp.
+3. **Core done:** Shift projected finish for delays and check the remaining schedule before start/resume. Sleep reconciliation and proactive prompting before the break-review buffer remain open.
+4. **Partly done:** User-approved preview, shortening/removal, Apply/resume, and fresh deadline validation. Durable deferral of removed work and optional earlier finish targets remain open.
+5. **Pending:** Focus-start reminder and optional phone backup prompt.
+6. **Pending:** Reconcile elapsed focus/break blocks after sleep and detect lock/away states.
+7. **Partly done:** Deadline review on Resume exists. A dedicated long-pause threshold, reason review, and separate pause-duration records remain pending.
+8. **Pending:** Repeating alarm, dismissal, volume control, and workflow checks.
+9. **Partly done:** Normal revised-plan pause/close/reopen confirmed. Unexpected-close accuracy and database/snapshot consistency remain open.
 
-## Planned flexible schedule with a fixed maximum window
+## Flexible schedule with a fixed maximum window
 
-**Agreed on 22 October 2026; not implemented yet.** The normal setup should need only one planning-duration input. The user does not have to calculate a finish time or know exactly how long they will be available.
+**Agreed on 22 October 2026; core implemented by 26 October.** One requested-duration input now builds a plan and fixes the maximum window at first Start. Expected-finish display, start/resume validation, revised preview, Apply/resume, and deadline persistence are implemented. Optional earlier availability limits, original-expected-finish targeting, durable deferred work, and sleep-aware reconciliation remain planned. The full agreed design below is retained, including those future parts. The user does not have to calculate a finish time or know exactly how long they will be available.
 
-### Default setup
+### Default setup and remaining availability options
 
 - The user enters a requested plan duration, such as **4 hours**. This includes the planned focus and break blocks, not four hours of focus alone.
 - The clock builds the sessions and calculates their expected finish time.
 - When the user first clicks Start for the plan, establish an original start timestamp and a fixed maximum elapsed window of **1.5 × the requested duration**.
 - A four-hour request therefore has a maximum six-hour real-world window. This is a ceiling, not a requirement to use all six hours or a prediction that the user is free for six hours.
-- An **available until** constraint is optional. If the user knows they must leave at a particular time, use that earlier limit. An optional available-duration entry can also be converted into a finish limit when the plan starts.
-- If a supplied availability limit cannot accommodate the initial plan, ask the user to adjust it before starting. Do not silently discard planned work.
+- **Planned:** an **available until** constraint is optional. If the user knows they must leave at a particular time, use that earlier limit. An optional available-duration entry can also be converted into a finish limit when the plan starts.
+- **Planned:** if a supplied availability limit cannot accommodate the initial plan, ask the user to adjust it before starting. Do not silently discard planned work.
 
 ```text
 Default latest finish = original plan start + 1.5 × requested duration
-Effective latest finish = earlier of default latest finish and optional availability limit
+Effective latest finish (planned availability option) = earlier of default latest finish and optional availability limit
 Expected finish = current time + remaining scheduled time
                   (when ready to continue; excluding future unplanned delays)
 ```
@@ -292,9 +327,11 @@ If the existing planner leaves a small amount of requested time unused, calculat
 | 4 hours | 10:00 AM | 3:00 PM | 2:00 PM | 3:00 PM |
 | 2 hours | 10:00 AM | Not supplied | Noon | 1:00 PM |
 
-*Examples assume the session blocks fill the requested duration.
+*Examples assume the session blocks fill the requested duration. The row with an optional availability limit describes planned behaviour; that input is not implemented yet.
 
 ### Reschedule using actual elapsed time
+
+Current code handles active running time, pause/wait delays in the expected finish, and a fixed persisted ceiling. The sleep/lock rules and separate interruption timing below remain design requirements.
 
 - Measure extra waiting after scheduled breaks and explicit pauses using real elapsed time, including intervals with the laptop locked or the app unavailable where applicable.
 - Move unfinished sessions forward to reflect actual delays while preserving their lengths whenever the remaining work still fits.
@@ -307,6 +344,8 @@ If the existing planner leaves a small amount of requested time unused, calculat
 Example: a four-hour plan starting at 10:00 AM normally finishes at 2:00 PM and has a 4:00 PM ceiling. Thirty minutes of extra break time moves the expected finish to 2:30 PM. Two hours of total extra delay moves it to 4:00 PM. Further delay means the unchanged remaining plan no longer fits; the clock must ask for a decision.
 
 ### Enforce the ceiling and preserve user control
+
+Start/resume checks, proposal confirmation, snapshot validation, and deadline persistence are implemented. Proactive review independent of the break buffer, sleep-aware cutoff, optional earlier deadlines, and durable deferral remain pending requirements in this section.
 
 - Check remaining work against the fixed ceiling before continuing and whenever actual delays change the projected finish.
 - If it no longer fits, ask the user to shorten remaining work, defer some work, stop, or explicitly create a replacement plan. Do not silently compress focus sessions or remove breaks.
@@ -329,9 +368,9 @@ Current progress against that baseline:
 
 - **Settings:** core duration and display preferences implemented; exact window positioning remains a minor limitation.
 - **Unfinished notes:** draft/queue persistence and autosave implemented; further failure/reconciliation checks remain.
-- **Timer recovery:** normal-exit and periodic snapshot recovery implemented; accuracy is an open bug, and sleep/lock handling plus richer timing records remain.
-- **Interruption review:** manual focus start, waiting-time persistence, buffer checks, optional reasons, Continue/Wait decisions, and interruption history are implemented. Expanded choices and bounded rescheduling remain.
-- **Time-range scheduling:** the one-input plan with a fixed 1.5× maximum window and optional availability limit is agreed but not implemented.
+- **Timer recovery:** normal-exit and revised-plan pause/close/reopen recovery confirmed; periodic snapshots exist. Unexpected-close accuracy remains an open bug, alongside sleep/lock handling and richer timing records.
+- **Interruption review:** manual focus start, waiting-time persistence, buffer checks, optional reasons, Continue/Wait/New plan decisions, interruption history, and bounded revised-plan Apply/resume are implemented. Dedicated long-pause review, alarm improvements, and durable deferral remain.
+- **Time-range scheduling:** requested-duration planning, a fixed 1.5× maximum window, expected/latest finish display, and deadline-aware revision are implemented. Optional availability limits and original-expected-finish targeting remain planned.
 - **Other sections:** retained below as planned work. The interruption and maximum-window rules belong to timer recovery, time-range scheduling, and reliability; do not count them as completed or add overlapping estimates twice.
 
 | Section | Original scope (see progress above) | Original hours |
@@ -356,7 +395,7 @@ Current progress against that baseline:
 - The earlier expanded-clock planning allowance was **60–100 hours**, including contingency and the daily-use milestone. It has not been recalculated for the new requirements.
 - The earlier **12–20 weeks at five hours/week** illustration was based on that historical allowance, not a current delivery forecast.
 
-Current sequence: strengthen recovery and implement the interruption flow in small checkpoints; introduce reusable tasks and richer details; add adaptive suggestions; then expand family use. Retain all original scope items. Difficulty ratings, gentle happy/grumpy companion feedback, and the previously discussed ten-minute review/form prompt remain in the richer-log and companion backlog; their exact interaction design still needs clarification. Estimates will be revised as sections are specified and tested.
+Current sequence: strengthen unexpected-close recovery and complete sleep/lock and interruption handling in small checkpoints; introduce reusable tasks and richer details; add adaptive suggestions; then expand family use. Retain all original scope items. Difficulty ratings, gentle happy/grumpy companion feedback, and the previously discussed ten-minute review/form prompt remain in the richer-log and companion backlog; their exact interaction design still needs clarification. Estimates will be revised as sections are specified and tested.
 
 ## Family use and future Family Planner integration
 
@@ -372,8 +411,29 @@ The intended integration sequence is:
 
 The proposed responsibility split is that Family Planner manages household tasks, schedules, and approved assignments, while the clock runs focus sessions and records progress. Stable user/task/session IDs and an authenticated interface would connect them. This is a future proposal, not an implemented integration or a change to the locked Family Planner V1 scope.
 
-## Next checkpoint
+## Remaining work and next checkpoint
 
-**Add Create a new plan to interruption review**, with confirmation before replacing the unfinished schedule and preservation of completed sessions, notes, and reviews. Then introduce persisted plan deadlines and the fixed 1.5× maximum window before implementing bounded rescheduling and recalculation.
+The former next checkpoint—Create a new plan, persisted fixed deadlines, and bounded revised-plan preview/Apply—is complete for the current workflow. The active-plan display fix is pushed, and normal pause/close/reopen has been confirmed.
+
+**Suggested next checkpoint: investigate unexpected-close recovery accuracy.** Compare the last saved elapsed value with the restored value during controlled forced-stop tests, including a session transition. Keep this separate from the normal-close test that already passed. Preserve existing records and check for missing or duplicate records; do not claim a guaranteed maximum loss from the autosave interval alone.
+
+The remaining roadmap, retaining the earlier scope:
+
+| Area | Remaining work |
+| --- | --- |
+| Reliability | Unexpected-close timing, crash-safe session/notes/snapshot consistency, failed-save recovery, and broader interruption tests. |
+| Sleep and lock | Wake reconciliation, lock/away handling, separation of elapsed schedule time from confirmed focus, and deadline-aware cutoff. |
+| Pauses and review | Separate pause timing, long-pause threshold/reasons, and review when deadlines require action before the normal break buffer. |
+| Alarms | Repeating chime, Stop alarm, volume control, and pre-focus duration/finish/phone-backup prompt. |
+| Scheduling | Optional finish-by limit, original-expected-finish target, and durable deferred-work tracking. |
+| Tasks | Reusable task IDs, Continue/Switch/Complete choices, and totals across sessions and days. |
+| Richer notes | Category, activity, methods, mental/physical effort, difficulty, optional completion percentage, findings, pending work, and next action. |
+| Adaptation | Focus/break suggestions, recovery feedback, larger-break rules, minimum-break policy, and priority-aware task suggestions. |
+| History and Excel | Browse beyond 20 records, date/task filters, edit notes, task totals, Excel export, and validated import. |
+| Companion | Gentle happy/grumpy feedback and the ten-minute review/form prompt; final interaction rules remain to be defined. |
+| Family profiles | Separate users, tasks, history, and preferences on one installation; future integration remains separate. |
+| Usability and maintenance | Actual-clock display alongside countdown, launcher/setup, pinned dependencies, incremental code organization, and documentation maintenance. |
+
+The actual-clock display is retained from the earlier user request. This progress update does not add a new major feature or change the locked Family Planner scope. Historical estimates above remain unchanged and are not current remaining-hour estimates.
 
 Keep the unexpected-close recovery timing discrepancy on the known-bug list. Do not change laptop power settings or add wake-up scheduling. Work in short sessions with one concrete outcome and a small verification checklist.
