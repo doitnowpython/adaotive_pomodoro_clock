@@ -209,7 +209,7 @@ def start_focus():
                 and plan_window is not None
                 and plan_window["latest_finished_at"]
                 == plan_data["deadline"]
-                and current_session_index >= plan_data["session_index"]
+                and current_session_index == plan_data["session_index"]
                 and [tuple(session) for session in active_plan]
                 == plan_data["original_plan"]
                 and elapsed_before_pause == plan_data["elapsed"]
@@ -243,6 +243,7 @@ def start_focus():
                 active_plan[:current_session_index]
                 + list(plan_data["proposal"])
             )
+            preview_session_plan()
 
             remaining_seconds = max(
                 0.0,
@@ -338,6 +339,7 @@ def reset_focus():
     pause_button.setEnabled(False)
     skip_button.setEnabled(False)
     save_timer_state()
+    preview_session_plan()
 
 
 
@@ -887,24 +889,30 @@ def get_revised_plan_preview_text(plan_data = None):
 
 
 def preview_session_plan():
-    available_minutes = available_time_input.value()
+    if active_plan:
+        plan = active_plan
+        lines = ["Current plan:", ""]
+    else:
+        plan = build_session_plan(
+            available_time_input.value(),
+            focus_input.value(),
+            break_input.value(),
+        )
+        lines = ["Plan preview:", ""]
 
-    plan = build_session_plan(
-        available_minutes,
-        focus_input.value(),
-        break_input.value()
-    )
-
-    lines = []
     planned_minutes = 0
 
-    for session_kind, minutes in plan:
-        lines.append(f"{session_kind.capitalize()}: {minutes} min")
+    for kind,minutes in plan:
+        lines.append(f"{kind.capitalize()}: {minutes} min")
         planned_minutes += minutes
 
-    unused_minutes = available_minutes - planned_minutes
-    lines.append(f"\nPlanned: {planned_minutes} min")
-    lines.append(f"Unused: {unused_minutes} min")
+    lines.append(f"\nTotal scheduled: {planned_minutes} min")
+
+    if not active_plan:
+        unused_minutes = available_time_input.value() - planned_minutes
+        lines.append(f"Unused: {unused_minutes} min")
+    else:
+        lines.append("Full block durations, including time already worked. ")
 
     plan_preview.setText("\n".join(lines))
 
