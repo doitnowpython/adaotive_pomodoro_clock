@@ -40,7 +40,8 @@ from database import (
     initialize_work_logs,
     fetch_today_summary,
     save_break_review,
-    initialize_tasks)
+    initialize_tasks,
+    get_active_tasks)
 from history_window import HistoryWindow
 
 
@@ -649,6 +650,12 @@ def save_work_log():
     session_id = pending_log_sessions_ids[0]
     task_name = task_name_input.text().strip()
     remarks = remarks_input.toPlainText().strip()
+    task_id = task_selector.currentData()
+    # temp
+    print(
+        f"[TASK SAVE] option = {task_selector.currentText()!r} "
+        f"task_id = {task_id!r}"
+    )
 
     if not task_name:
         log_feedback_label.setText("Please enter a task name.")
@@ -658,17 +665,40 @@ def save_work_log():
         with closing(sqlite3.connect(database_path)) as connection:
             connection.execute("PRAGMA foreign_keys = ON")
 
+            if task_id is None:
+                existing_task = connection.execute(
+                    """
+                    SELECT id, name
+                    FROM tasks
+                    WHERE name = ? COLLATE NOCASE
+                        AND status = 'active'
+                    ORDER BY id
+                    LIMIT 1
+                    """, (task_name,)).fetchone()
+
+                if existing_task is not None:
+                    task_id = existing_task[0]
+                    task_name = existing_task[1]
+                else:
+                    cursor = connection.execute(
+                        "INSERT INTO tasks (name) VALUES (?)",
+                        (task_name,)
+                    )
+                    task_id = cursor.lastrowid
+
             connection.execute("""
                 INSERT INTO work_logs (
                     task,
                     remarks,
-                    session_id
+                    session_id,
+                    task_id
                     )
-                    VALUES (?,?,?)
+                    VALUES (?,?,?,?)
                     """,(
                     task_name,
                     remarks,
-                    session_id
+                    session_id,
+                    task_id
                 ) )
 
             connection.commit()
@@ -684,7 +714,11 @@ def save_work_log():
     pending_log_sessions_ids.pop(0)
     print("Notes queue after saving: ", pending_log_sessions_ids)
 
+    if task_selector.findData(task_id) == -1:
+        task_selector.addItem(task_name, task_id)
+
     task_name_input.clear()
+    task_selector.setCurrentIndex(0)
     remarks_input.clear()
     save_pending_notes()
 
@@ -1378,6 +1412,15 @@ def print_plan_window():
         )
         print(f"{key}: {readable_time}")
 
+def on_task_selected(index):
+    task_id = task_selector.itemData(index)
+
+    if task_id is None:
+        task_name_input.setReadOnly(False)
+        task_name_input.clear()
+    else:
+        task_name_input.setText(task_selector.itemText(index))
+        task_name_input.setReadOnly(True)
 
 
 
@@ -1410,7 +1453,6 @@ active_plan = []
 current_session_index = 0
 pending_log_sessions_ids = []
 break_wait_started_at = None
-plan_window = None
 plan_window = None
 
 #app window creation
@@ -1544,12 +1586,22 @@ log_window.setModal(False)
 task_name_input = QLineEdit()
 task_name_input.setPlaceholderText("What task were you working on?")
 
+task_selector = QComboBox()
+task_selector.addItem("New task / enter a name below", None)
+
+for task in get_active_tasks():
+    task_selector.addItem(task["name"], task["id"])
+
+
+
 remarks_input = QTextEdit()
 remarks_input.setPlaceholderText(
     "What did you complete, discover, or leave pending?"
 )
 
 log_layout = QVBoxLayout(log_window)
+log_layout.addWidget(QLabel("Existing task"))
+log_layout.addWidget(task_selector)
 log_layout.addWidget(QLabel("Task"))
 log_layout.addWidget(task_name_input)
 log_layout.addWidget(QLabel("Findings and remarks"))
@@ -1584,6 +1636,7 @@ history_button.clicked.connect(show_history)
 notes_autosave_timer.timeout.connect(save_pending_notes)
 task_name_input.textChanged.connect(schedule_notes_autosave)
 remarks_input.textChanged.connect(schedule_notes_autosave)
+task_selector.currentIndexChanged.connect(on_task_selected)
 
 
 #saved settings
