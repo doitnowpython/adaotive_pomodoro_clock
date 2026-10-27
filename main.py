@@ -39,8 +39,10 @@ from database import (
     fetch_recent_sessions,
     initialize_work_logs,
     fetch_today_summary,
-    save_break_review)
+    save_break_review,
+    initialize_tasks)
 from history_window import HistoryWindow
+
 
 def save_pending_notes():
     pending_notes = {
@@ -83,6 +85,20 @@ def save_timer_state():
         settings.setValue("timer_state", json.dumps(state))
 
     settings.sync()
+    #Testing
+    if active_plan and current_session_index < len(active_plan):
+        saved_remaining = math.ceil(
+            active_plan[current_session_index][1] * 60
+            - state["elapsed"]
+        )
+        print(
+            f"[SAVE] time ={time.strftime('%H:%M:%S')} "
+            f"block={state['index'] + 1} "
+            f"elapsed={state['elapsed']:.3f}s "
+            f"remaining={saved_remaining}s "
+            f"status={settings.status()}",
+            flush=True
+        )
     #Temp
     if break_wait_started_at is not None:
         print(
@@ -1081,6 +1097,14 @@ def restore_timer_state():
 
     preview_session_plan()
     print_plan_window()
+    print(
+        f"[RESTORE] time={time.strftime('%H:%M:%S')} "
+        f"block={current_session_index + 1} "
+        f"saved_elapsed={elapsed:.3f}s "
+        f"restored_elapsed={elapsed_before_pause:.3f}s "
+        f"remaining={remaining_seconds}s",
+        flush=True
+    )
 
 def get_break_wait_seconds():
     if break_wait_started_at is None:
@@ -1396,7 +1420,9 @@ app = QApplication(sys.argv)
 settings = QSettings("PiyushApps", "AdaptivePomodoroClock")
 
 # adding Database table check -checks Schema each startup
+initialize_tasks()
 initialize_work_logs()
+
 
 #app window settings
 window = QWidget()

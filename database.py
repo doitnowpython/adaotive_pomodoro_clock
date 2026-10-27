@@ -108,6 +108,14 @@ def initialize_work_logs():
                REFERENCES sessions_records(id)
            """)
 
+        if "task_id" not in columns:
+            connection.execute(
+                """
+                ALTER TABLE work_logs
+                ADD COLUMN task_id INTEGER REFERENCES tasks(id)
+                """
+            )
+
         connection.commit()
 
 def fetch_sessions_notes(session_id):
@@ -219,3 +227,49 @@ def fetch_break_reviews(limit=20):
             ORDER BY saved_at DESC, rowid DESC
             LIMIT ?
         """, (limit,)).fetchall()
+
+def initialize_tasks():
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS tasks (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active'
+                    CHECK (status IN ('active', 'completed')),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP 
+            )
+            """)
+        connection.commit()
+
+def create_task(name):
+    name = name.strip()
+
+    if not name:
+        raise ValueError("Task name cannot be empty.")
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        cursor = connection.execute(
+            "INSERT INTO tasks (name) VALUES (?)",
+            (name,)
+        )
+        connection.commit()
+
+        return cursor.lastrowid
+
+def get_active_tasks():
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.row_factory = sqlite3.Row
+
+        rows = connection.execute(
+            """
+            SELECT id, name
+            FROM tasks
+            WHERE status = ?
+            ORDER BY id DESC
+            """,
+            ("active",)
+        ).fetchall()
+
+        return [dict(row) for row in rows]
+
