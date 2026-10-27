@@ -48,6 +48,7 @@ from history_window import HistoryWindow
 def save_pending_notes():
     pending_notes = {
         "session_ids" : pending_log_sessions_ids,
+        "task_id" : task_selector.currentData(),
         "task" : task_name_input.text(),
         "remarks" : remarks_input.toPlainText()
     }
@@ -92,14 +93,14 @@ def save_timer_state():
             active_plan[current_session_index][1] * 60
             - state["elapsed"]
         )
-        print(
-            f"[SAVE] time ={time.strftime('%H:%M:%S')} "
-            f"block={state['index'] + 1} "
-            f"elapsed={state['elapsed']:.3f}s "
-            f"remaining={saved_remaining}s "
-            f"status={settings.status()}",
-            flush=True
-        )
+        #print(
+        #    f"[SAVE] time ={time.strftime('%H:%M:%S')} "
+        #    f"block={state['index'] + 1} "
+        #    f"elapsed={state['elapsed']:.3f}s "
+        #    f"remaining={saved_remaining}s "
+        #    f"status={settings.status()}",
+        #    flush=True
+        #)
     #Temp
     if break_wait_started_at is not None:
         print(
@@ -1006,8 +1007,20 @@ def restore_pending_notes():
     try:
         notes = json.loads(saved_notes)
         session_ids = [int(value) for value in notes["session_ids"]]
+        task_id = notes["task_id"]
         task = notes["task"]
         remarks = notes["remarks"]
+
+        if task_id is not None:
+            if type(task_id) is not int or task_id <= 0:
+                #raise ValueError("Invalid task ID")
+                print(
+                    "[NOTES RESTORE} Invalid task ID:",
+                    repr(task_id),
+                    "type:",
+                    type(task_id).__name__,
+                )
+                task_id = None
 
         if not isinstance(task, str) or not isinstance(remarks, str):
             raise ValueError("Invalid note text")
@@ -1019,8 +1032,32 @@ def restore_pending_notes():
     pending_log_sessions_ids.clear()
     pending_log_sessions_ids.extend(session_ids)
 
-    task_name_input.setText(task)
-    remarks_input.setPlainText(remarks)
+    selected_index = (
+        task_selector.findData(task_id)
+        if task_id is not None
+        else 0
+    )
+
+    if selected_index == -1:
+        selected_index = 0
+
+    widgets = (task_selector, task_name_input, remarks_input)
+    previous_signal_states = [
+        widget.blockSignals(True) for widget in widgets
+    ]
+
+    try:
+        task_selector.setCurrentIndex(selected_index)
+        task_name_input.setText(task)
+        task_name_input.setReadOnly(selected_index > 0)
+        remarks_input.setPlainText(remarks)
+    finally:
+        for widget, previous_state in zip(
+            widgets, previous_signal_states
+        ):
+            widget.blockSignals(previous_state)
+    #task_name_input.setText(task)
+    #emarks_input.setPlainText(remarks)
 
     if pending_log_sessions_ids:
         show_work_log()
