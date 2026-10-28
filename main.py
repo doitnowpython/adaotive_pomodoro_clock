@@ -41,7 +41,8 @@ from database import (
     fetch_today_summary,
     save_break_review,
     initialize_tasks,
-    get_active_tasks)
+    get_active_tasks,
+    fetch_task_remarks)
 from history_window import HistoryWindow
 
 
@@ -623,6 +624,7 @@ def show_work_log():
     save_log_button.setEnabled(True)
     task_name_input.setEnabled(True)
     remarks_input.setEnabled(True)
+    refresh_task_remarks()
     log_window.show()
     log_window.raise_()
 
@@ -1449,6 +1451,52 @@ def print_plan_window():
         )
         print(f"{key}: {readable_time}")
 
+def refresh_task_remarks():
+    task_id = task_selector.currentData()
+    previous_remarks_view.clear()
+
+    if task_id is None:
+        previous_remarks_view.setPlaceholderText(
+            "Select an existing task to see its previous remarks."
+        )
+        return
+    try:
+        notes = fetch_task_remarks(task_id)
+    except sqlite3.Error as  error:
+        previous_remarks_view.setPlainText(
+            "Could not load previous remarks."
+        )
+        print("Task remarks error:", error)
+        return
+
+    if not notes:
+        previous_remarks_view.setPlaceholderText(
+            "No saved remarks for this task yet."
+        )
+        return
+
+    entries = []
+
+    for note in notes :
+        session_id = note["session_id"]
+        session_text = (
+            f"Session_id #{session_id}"
+            if session_id is not None
+            else "No linked session"
+        )
+        saved_at = note["saved_at"] or "Date unavailable"
+        remarks = note["remarks"].strip() or "(No remarks entered)"
+
+        entries.append(
+            f"{session_text} | Saved: {saved_at}\n"
+            f"{remarks}"
+        )
+
+        previous_remarks_view.setPlainText(
+            "\n\n -----------------------------------\n\n".join(entries)
+        )
+
+
 def on_task_selected(index):
     task_id = task_selector.itemData(index)
 
@@ -1458,6 +1506,8 @@ def on_task_selected(index):
     else:
         task_name_input.setText(task_selector.itemText(index))
         task_name_input.setReadOnly(True)
+
+    refresh_task_remarks()
 
 
 
@@ -1636,19 +1686,28 @@ remarks_input.setPlaceholderText(
     "What did you complete, discover, or leave pending?"
 )
 
+previous_remarks_view = QTextEdit()
+previous_remarks_view.setReadOnly(True)
+previous_remarks_view.setPlaceholderText(
+    "Select an existing task to see its previous remarks"
+)
+
 log_layout = QVBoxLayout(log_window)
 log_layout.addWidget(QLabel("Existing task"))
 log_layout.addWidget(task_selector)
+log_feedback_label = QLabel("Previous remarks")
+log_layout.addWidget(previous_remarks_view)
+
 log_layout.addWidget(QLabel("Task"))
 log_layout.addWidget(task_name_input)
 log_layout.addWidget(QLabel("Findings and remarks"))
 log_layout.addWidget(remarks_input)
 
 save_log_button = QPushButton("Save log")
-log_feedback_label = QLabel("")
 
 log_layout.addWidget(save_log_button)
 log_layout.addWidget(log_feedback_label)
+
 
 save_log_button.clicked.connect(save_work_log)
 

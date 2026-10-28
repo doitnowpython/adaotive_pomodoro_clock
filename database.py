@@ -273,3 +273,26 @@ def get_active_tasks():
 
         return [dict(row) for row in rows]
 
+def fetch_task_remarks(task_id):
+    if task_id is None:
+        return []
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.row_factory = sqlite3.Row
+
+        rows = connection.execute(
+            """
+            SELECT
+                w.id AS note_id,
+                w.session_id,
+                w.remarks,
+                s.saved_at
+                FROM work_logs AS w
+                LEFT JOIN sessions_records AS s
+                    ON s.id = w.session_id
+                WHERE w.task_id = ?
+                ORDER BY w.id DESC
+                """, (task_id,)).fetchall()
+
+        return [dict(row) for row in rows]
+
