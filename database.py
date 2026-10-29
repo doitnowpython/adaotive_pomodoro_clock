@@ -296,3 +296,78 @@ def fetch_task_remarks(task_id):
 
         return [dict(row) for row in rows]
 
+def initialize_task_notes():
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS task_notes (
+            id INTEGER PRIMARY KEY,
+            task_id INTEGER NOT NULL REFERENCES tasks(id),
+            content TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, 
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            deleted_at TEXT
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_task_notes_task_id
+            ON task_notes (task_id)
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS task_note_sources (
+                task_note_id INTEGER NOT NULL
+                    REFERENCES task_notes(id) ON DELETE CASCADE,
+                work_log_id INTEGER NOT NULL
+                    REFERENCES work_logs(id) ,
+                PRIMARY KEY (task_note_id, work_log_id)
+                )
+            """
+        )
+
+def create_task_note(task_id, content):
+    if type(task_id) is not int or task_id <= 0:
+        raise ValueError("Select an existing task.")
+
+    if not isinstance(content, str) or not content.strip():
+        raise ValueError("Working note cannot be empty. ")
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+
+        with connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO task_notes (task_id, content)
+                VALUES (?, ?)
+                """, (task_id, content.strip()))
+
+            note_id = cursor.lastrowid
+
+    return note_id
+
+def fetch_task_notes(task_id):
+    if task_id is None:
+        return []
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.row_factory = sqlite3.Row
+
+        rows = connection.execute(
+            """
+            SELECT
+            id,
+            task_id,
+            content,
+            created_at,
+            updated_at,
+            FROM task_notes
+            WHERE task_id = ?
+            AND deleted_at IS NULL
+            ORDER BY id DESC
+            """, (task_id,)).fetchall()
+
+    return [dict(row) for row in rows]

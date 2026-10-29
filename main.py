@@ -42,7 +42,8 @@ from database import (
     save_break_review,
     initialize_tasks,
     get_active_tasks,
-    fetch_task_remarks)
+    fetch_task_remarks,
+    initialize_task_notes)
 from history_window import HistoryWindow
 
 
@@ -1551,6 +1552,7 @@ settings = QSettings("PiyushApps", "AdaptivePomodoroClock")
 # adding Database table check -checks Schema each startup
 initialize_tasks()
 initialize_work_logs()
+initialize_task_notes()
 
 
 #app window settings
