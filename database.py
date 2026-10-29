@@ -363,7 +363,7 @@ def fetch_task_notes(task_id):
             task_id,
             content,
             created_at,
-            updated_at,
+            updated_at
             FROM task_notes
             WHERE task_id = ?
             AND deleted_at IS NULL

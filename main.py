@@ -4,8 +4,6 @@ from email import message
 from pathlib import Path
 import sqlite3
 from contextlib import closing
-from tkinter import dialog
-from urllib import request
 
 from PySide6.QtWidgets import (
     QApplication,
@@ -43,7 +41,8 @@ from database import (
     initialize_tasks,
     get_active_tasks,
     fetch_task_remarks,
-    initialize_task_notes)
+    initialize_task_notes,
+    fetch_task_notes)
 from history_window import HistoryWindow
 
 
@@ -626,6 +625,9 @@ def show_work_log():
     task_name_input.setEnabled(True)
     remarks_input.setEnabled(True)
     refresh_task_remarks()
+    refresh_task_notes()
+
+
     log_window.show()
     log_window.raise_()
 
@@ -644,6 +646,7 @@ def preview_work_log():
 
     print(work_log)
     log_feedback_label.setText("Preview printed in the console. Not saved yet.")
+
 
 def save_work_log():
 
@@ -1497,6 +1500,39 @@ def refresh_task_remarks():
             "\n\n -----------------------------------\n\n".join(entries)
         )
 
+def refresh_task_notes():
+    task_id = task_selector.currentData()
+    task_notes_view.clear()
+
+    if task_id is None:
+        task_notes_view.setPlaceholderText(
+            "Select an existing task to see its working notes."
+        )
+        return
+
+    try:
+        notes = fetch_task_notes(task_id)
+    except sqlite3.Error as error:
+        task_notes_view.setPlainText(
+            "Could not load working notes."
+        )
+        print("Working notes error:", error)
+        return
+
+    if not notes:
+        task_notes_view.setPlainText(
+            "No saved notes for this task yet."
+        )
+        return
+
+    entries = [
+        f"Note #{note['id']}\n{note['content']}"
+        for note in notes
+    ]
+
+    task_notes_views.setPlainText(
+        "\n\n----------------------------------\n\n".join(entries)
+    )
 
 def on_task_selected(index):
     task_id = task_selector.itemData(index)
@@ -1509,6 +1545,7 @@ def on_task_selected(index):
         task_name_input.setReadOnly(True)
 
     refresh_task_remarks()
+    refresh_task_notes()
 
 
 
@@ -1694,11 +1731,20 @@ previous_remarks_view.setPlaceholderText(
     "Select an existing task to see its previous remarks"
 )
 
+task_notes_view = QTextEdit()
+task_notes_view.setReadOnly(True)
+task_notes_view.setPlaceholderText(
+    "Select an existing task to see its working notes."
+)
+
 log_layout = QVBoxLayout(log_window)
 log_layout.addWidget(QLabel("Existing task"))
 log_layout.addWidget(task_selector)
 log_feedback_label = QLabel("Previous remarks")
 log_layout.addWidget(previous_remarks_view)
+
+log_layout.addWidget(QLabel("Working notes"))
+log_layout.addWidget(task_notes_view)
 
 log_layout.addWidget(QLabel("Task"))
 log_layout.addWidget(task_name_input)
