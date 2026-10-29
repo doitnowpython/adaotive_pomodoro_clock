@@ -1,6 +1,4 @@
 import sys
-from asyncio import timeout
-from email import message
 from pathlib import Path
 import sqlite3
 from contextlib import closing
@@ -18,7 +16,9 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QTextEdit,
     QMessageBox,
-    QHBoxLayout, QComboBox)
+    QHBoxLayout,
+    QComboBox,
+    QInputDialog)
 import time
 import math
 from PySide6.QtCore import (
@@ -42,7 +42,8 @@ from database import (
     get_active_tasks,
     fetch_task_remarks,
     initialize_task_notes,
-    fetch_task_notes)
+    fetch_task_notes,
+    create_task_note)
 from history_window import HistoryWindow
 
 
@@ -1530,9 +1531,55 @@ def refresh_task_notes():
         for note in notes
     ]
 
-    task_notes_views.setPlainText(
+    task_notes_view.setPlainText(
         "\n\n----------------------------------\n\n".join(entries)
     )
+
+def add_working_note():
+    task_id = task_selector.currentData()
+
+    if task_id is None:
+        QMessageBox.information(
+            log_window,
+            "Select a task",
+            "Select an existing task before adding a working note."
+        )
+        return
+
+    task_name = task_selector.currentText()
+    content = ""
+
+    while True:
+        content, accepted = QInputDialog.getMultiLineText(
+            log_window,
+            "Add working note",
+            f"Working note for: {task_name}",
+            content
+        )
+
+        if not accepted:
+            return
+
+        try:
+            create_task_note(task_id, content)
+        except ValueError as error:
+            QMessageBox.warning(
+                log_window,
+                "Check your note",
+                str(error)
+            )
+        except sqlite3.Error as error:
+            print("Working note error:", error)
+            QMessageBox.warning(
+                log_window,
+                "Could not save",
+                "Your not was not saved. "
+                "Close this message to return to your text and retry."
+            )
+        else:
+            refresh_task_notes()
+            log_feedback_label.setText("Working note saved.")
+            return
 
 def on_task_selected(index):
     task_id = task_selector.itemData(index)
@@ -1745,6 +1792,10 @@ log_layout.addWidget(previous_remarks_view)
 
 log_layout.addWidget(QLabel("Working notes"))
 log_layout.addWidget(task_notes_view)
+
+add_working_note_button = QPushButton("Add working note")
+log_layout.addWidget(add_working_note_button)
+add_working_note_button.clicked.connect(add_working_note)
 
 log_layout.addWidget(QLabel("Task"))
 log_layout.addWidget(task_name_input)
