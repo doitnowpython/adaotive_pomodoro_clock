@@ -43,7 +43,8 @@ from database import (
     fetch_task_remarks,
     initialize_task_notes,
     fetch_task_notes,
-    create_task_note)
+    create_task_note,
+    update_task_note)
 from history_window import HistoryWindow
 
 
@@ -1503,37 +1504,51 @@ def refresh_task_remarks():
 
 def refresh_task_notes():
     task_id = task_selector.currentData()
-    task_notes_view.clear()
-
-    if task_id is None:
-        task_notes_view.setPlaceholderText(
-            "Select an existing task to see its working notes."
-        )
-        return
+    previous_status = working_note_selector.blockSignals(True)
 
     try:
-        notes = fetch_task_notes(task_id)
-    except sqlite3.Error as error:
-        task_notes_view.setPlainText(
-            "Could not load working notes."
+        working_note_selector.clear()
+        working_note_selector.addItem("Select a working note", None)
+        task_notes_view.clear()
+
+        if task_id is None:
+            task_notes_view.setPlaceholderText(
+                "Select an existing task to see its working notes."
+            )
+            return
+
+        try:
+            notes = fetch_task_notes(task_id)
+        except sqlite3.Error as error:
+            task_notes_view.setPlainText(
+                "Cloud not load working notes."
+            )
+            print("Working notes error:", error)
+            return
+
+        if not notes:
+            task_notes_view.setPlaceholderText(
+                "No working notes for this task yet."
+            )
+            return
+
+        for note in notes :
+            preview = " ".join(note["content"].split())
+
+            if len(preview) > 60:
+                preview = preview[:60] + "..."
+
+            working_note_selector.addItem(
+                f"#{note['id']} - {preview}",
+                note
+            )
+
+        task_notes_view.setPlaceholderText(
+            "Choose a working note above to read it."
         )
-        print("Working notes error:", error)
-        return
+    finally:
+        working_note_selector.blockSignals(previous_status)
 
-    if not notes:
-        task_notes_view.setPlainText(
-            "No saved notes for this task yet."
-        )
-        return
-
-    entries = [
-        f"Note #{note['id']}\n{note['content']}"
-        for note in notes
-    ]
-
-    task_notes_view.setPlainText(
-        "\n\n----------------------------------\n\n".join(entries)
-    )
 
 def add_working_note():
     task_id = task_selector.currentData()
@@ -1579,6 +1594,84 @@ def add_working_note():
         else:
             refresh_task_notes()
             log_feedback_label.setText("Working note saved.")
+            return
+
+def on_working_note_selected(index):
+    note = working_note_selector.itemData(index)
+    task_notes_view.clear()
+
+    if note is None:
+        task_notes_view.setPlaceholderText(
+            "Choose a working note above to read it."
+        )
+        return
+    task_notes_view.setPlainText(
+        f"Note #{note['id']}\n\n{note['content']}"
+    )
+
+def edit_working_note():
+    task_id = task_selector.currentData()
+    note = working_note_selector.currentData()
+
+    if task_id is None or note is None:
+        QMessageBox.information(
+            log_window,
+            "Select a working note",
+            "Select a task and a working note before editing."
+        )
+        return
+
+    if note["task_id"] != task_id:
+        refresh_task_notes()
+        QMessageBox.warning(
+            log_window,
+            "Select the note again",
+            "The selected note does not belong to this task."
+        )
+        return
+
+    note_id = note["id"]
+    content = note["content"]
+
+    while True:
+        content, accepted = QInputDialog.getMultiLineText(
+            log_window,
+            "Edit working note",
+            f"Edit note #{note_id}:",
+            content
+        )
+
+        if not accepted:
+            return
+
+        try:
+            update_task_note(note_id, task_id, content)
+        except ValueError as error:
+            QMessageBox.warning(
+                log_window,
+                "Check your note",
+                str(error)
+            )
+        except sqlite3.Error as error:
+            print("Working note update error:", error)
+            QMessageBox.warning(
+                log_window,
+                "Could not save",
+                "Your not was not saved. "
+                "Close this message to return to your text and retry."
+            )
+        else:
+            refresh_task_notes()
+
+            if task_selector.currentData() == task_id:
+                for index in range(working_note_selector.count()):
+                    saved_note = working_note_selector.itemData(index)
+
+                    if saved_note and saved_note["id"] == note_id:
+                        working_note_selector.setCurrentIndex(index)
+                        break
+
+            log_feedback_label.setText("Working note updated.")
             return
 
 def on_task_selected(index):
@@ -1778,6 +1871,9 @@ previous_remarks_view.setPlaceholderText(
     "Select an existing task to see its previous remarks"
 )
 
+working_note_selector = QComboBox()
+working_note_selector.addItem("Select a working note", None)
+
 task_notes_view = QTextEdit()
 task_notes_view.setReadOnly(True)
 task_notes_view.setPlaceholderText(
@@ -1791,11 +1887,16 @@ log_feedback_label = QLabel("Previous remarks")
 log_layout.addWidget(previous_remarks_view)
 
 log_layout.addWidget(QLabel("Working notes"))
+log_layout.addWidget(working_note_selector)
 log_layout.addWidget(task_notes_view)
 
 add_working_note_button = QPushButton("Add working note")
 log_layout.addWidget(add_working_note_button)
 add_working_note_button.clicked.connect(add_working_note)
+
+edit_working_note_button = QPushButton("Edit working note")
+log_layout.addWidget(edit_working_note_button)
+edit_working_note_button.clicked.connect(edit_working_note)
 
 log_layout.addWidget(QLabel("Task"))
 log_layout.addWidget(task_name_input)
@@ -1832,6 +1933,9 @@ notes_autosave_timer.timeout.connect(save_pending_notes)
 task_name_input.textChanged.connect(schedule_notes_autosave)
 remarks_input.textChanged.connect(schedule_notes_autosave)
 task_selector.currentIndexChanged.connect(on_task_selected)
+working_note_selector.currentIndexChanged.connect(
+    on_working_note_selected
+)
 
 
 #saved settings

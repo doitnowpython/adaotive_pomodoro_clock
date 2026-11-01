@@ -349,6 +349,38 @@ def create_task_note(task_id, content):
 
     return note_id
 
+def update_task_note(note_id,task_id,content):
+    if type(note_id) is not int or note_id <= 0:
+        raise ValueError("Select a working note.")
+
+    if type(task_id) is not int or task_id <= 0:
+        raise ValueError("Select an existing task.")
+
+    if not isinstance(content, str) or not content.strip():
+        raise ValueError("Working note cannot be empty. ")
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+
+        with connection:
+            cursor = connection.execute(
+                """
+                UPDATE task_notes
+                SET content = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                where id = ?
+                    AND task_id = ?
+                    AND deleted_at IS NULL
+                """, (content.strip(), note_id, task_id))
+
+            if cursor.rowcount != 1:
+                raise ValueError(
+                    "This working note is no longer available. "
+                    "For this task"
+                )
+
+
+
 def fetch_task_notes(task_id):
     if task_id is None:
         return []
