@@ -403,3 +403,81 @@ def fetch_task_notes(task_id):
             """, (task_id,)).fetchall()
 
     return [dict(row) for row in rows]
+
+def trash_task_notes(note_id, task_id):
+    if type(note_id) is not int or note_id <= 0:
+        raise ValueError("Select a working note.")
+
+    if type(task_id) is not int or task_id <= 0:
+        raise ValueError("Select an existing task.")
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+
+        with connection:
+            cursor = connection.execute(
+                """
+                UPDATE task_notes
+                SET deleted_at = CURRENT_TIMESTAMP
+                where id = ?
+                AND task_id = ?
+                AND deleted_at IS NULL
+                """, (note_id, task_id)
+            )
+            if cursor.rowcount != 1:
+                raise ValueError(
+                    "This working note is no longer available. "
+                    "for this task"
+                )
+
+def restore_task_notes(note_id, task_id):
+    if type(note_id) is not int or note_id <= 0:
+        raise ValueError("Select a working note.")
+
+    if type(task_id) is not int or task_id <= 0:
+        raise ValueError("Select an existing task.")
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+
+        with connection:
+            cursor = connection.execute(
+                """
+                UPDATE task_notes
+                SET deleted_at = NULL
+                WHERE id = ?
+                AND task_id = ?
+                AND deleted_at IS NOT NULL
+                """, (note_id, task_id)
+            )
+            if cursor.rowcount != 1:
+                raise ValueError(
+                    "This not is no longer in Trash "
+                    "for this task. "
+                )
+
+def fetch_trashed_task_notes(task_id):
+    if task_id is None:
+        return []
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.row_factory = sqlite3.Row
+
+        rows = connection.execute(
+            """
+            SELECT
+            id,
+            task_id,
+            content,
+            created_at,
+            updated_at,
+            deleted_at
+            FROM task_notes
+            WHERE 
+            task_id = ?
+            AND deleted_at IS NOT NULL
+            ORDER BY deleted_at DESC, id DESC
+            """, (task_id,)
+        ).fetchall()
+
+    return [dict(row) for row in rows]

@@ -44,7 +44,10 @@ from database import (
     initialize_task_notes,
     fetch_task_notes,
     create_task_note,
-    update_task_note)
+    update_task_note,
+    trash_task_notes,
+    fetch_trashed_task_notes,
+    restore_task_notes)
 from history_window import HistoryWindow
 
 
@@ -1674,6 +1677,180 @@ def edit_working_note():
             log_feedback_label.setText("Working note updated.")
             return
 
+def move_selected_note_to_trash():
+    task_id = task_selector.currentData()
+    note = working_note_selector.currentData()
+
+    if task_id is None or note is None:
+        QMessageBox.information(
+            log_window,
+            "Select a working note",
+            "Select a task and a working note first. "
+        )
+        return
+
+    if note["task_id"] != task_id:
+        refresh_task_notes()
+        QMessageBox.warning(
+            log_window,
+            "Select the note again",
+            "The selected note does not belong to this task."
+        )
+        return
+
+    answer = QMessageBox.question(
+        log_window,
+        "Move working note to Trash?",
+        f"Move working note #{note['id']} to Trash? \n\n"
+        "Its text and source links will be kept. "
+        "Original session remarks will remain unchanged. ",
+        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        QMessageBox.StandardButton.No
+    )
+
+    if answer != QMessageBox.StandardButton.Yes:
+        return
+
+    try:
+        trash_task_notes(note["id"],task_id)
+    except ValueError as error:
+        refresh_task_notes()
+        QMessageBox.warning(
+            log_window,
+            "Could not move note",
+            str(error)
+        )
+    except sqlite3.Error as error:
+        print("Move note error:", error)
+        QMessageBox.warning(
+            log_window,
+            "Could not move note",
+            "The note could not be moved to trash. Please try again."
+        )
+    else:
+        refresh_task_notes()
+        log_feedback_label.setText("Working note moved to Trash.")
+
+def show_task_note_trash():
+    task_id = task_selector.currentData()
+
+    print("[TRASH] Button handler entered", flush=True)
+
+    if task_id is None:
+        QMessageBox.information(
+            log_window,
+            "Select a task",
+            "Select an existing task to view its Trash."
+        )
+        return
+
+    try:
+        notes = fetch_trashed_task_notes(task_id)
+    except sqlite3.Error as error:
+        print("Load Trash error:", error)
+        QMessageBox.warning(
+            log_window,
+            "Could not load Trash",
+            "Please try again."
+        )
+        return
+
+    if not notes:
+        QMessageBox.information(
+            log_window,
+            "Trash is empty",
+            "This task has no trashed working notes."
+        )
+        return
+
+    trash_dialog = QDialog(log_window)
+    trash_dialog.setWindowTitle(
+        f"Trash - {task_selector.currentText()}"
+    )
+    trash_dialog.resize(500,400)
+
+    trash_selector = QComboBox()
+
+    for note in notes:
+        preview = " ".join(note["content"].split())
+
+        if len(preview) > 60:
+            preview = preview[:60] = "..."
+
+        trash_selector.addItem(
+            f"#{note['id']} - {preview}",
+            note
+        )
+
+    trash_preview = QTextEdit()
+    trash_preview.setReadOnly(True)
+
+    restore_button = QPushButton("Restore selected note")
+    close_button = QPushButton("Close")
+
+    trash_layout = QVBoxLayout(trash_dialog)
+    trash_layout.addWidget(QLabel("Trashed working notes"))
+    trash_layout.addWidget(trash_selector)
+    trash_layout.addWidget(trash_preview)
+    trash_layout.addWidget(restore_button)
+    trash_layout.addWidget(close_button)
+
+    def preview_selected_note(index):
+        selected_note = trash_selector.itemData(index)
+
+        if selected_note is None:
+            trash_preview.clear()
+            return
+
+        trash_preview.setPlainText(selected_note["content"])
+
+    def restore_selected_note():
+        selected_note = trash_selector.currentData()
+
+        if selected_note is None:
+            return
+
+        try:
+            restore_task_notes(selected_note["id"], task_id)
+        except ValueError as error:
+            QMessageBox.warning(
+                trash_dialog,
+                "Could not restore note",
+                str(error)
+            )
+        except sqlite3.Error as error:
+            print("Restore note error:", error)
+            QMessageBox.warning(
+                trash_dialog,
+                "Could not restore note",
+                "The note could not be restored. Please try again."
+            )
+        else:
+            trash_dialog.accept()
+
+    trash_selector.currentIndexChanged.connect(
+        preview_selected_note
+    )
+    restore_button.clicked.connect(restore_selected_note)
+    close_button.clicked.connect(trash_dialog.reject)
+
+    preview_selected_note(trash_selector.currentIndex())
+
+    if trash_dialog.exec() == QDialog.DialogCode.Accepted:
+        restore_note = trash_selector.currentData()
+        refresh_task_notes()
+
+        if task_selector.currentData() == task_id:
+            for index in range(working_note_selector.count()):
+                note = working_note_selector.itemData(index)
+
+                if note and note['id'] == restore_note['id']:
+                    working_note_selector.setCurrentIndex(index)
+                    break
+
+        log_feedback_label.setText("Working note restored")
+
+
 def on_task_selected(index):
     task_id = task_selector.itemData(index)
 
@@ -1897,6 +2074,16 @@ add_working_note_button.clicked.connect(add_working_note)
 edit_working_note_button = QPushButton("Edit working note")
 log_layout.addWidget(edit_working_note_button)
 edit_working_note_button.clicked.connect(edit_working_note)
+
+trash_working_note_button = QPushButton("Move to Trash")
+log_layout.addWidget(trash_working_note_button)
+trash_working_note_button.clicked.connect(
+    move_selected_note_to_trash
+)
+
+view_trash_button = QPushButton("View trash")
+log_layout.addWidget(view_trash_button)
+view_trash_button.clicked.connect(show_task_note_trash)
 
 log_layout.addWidget(QLabel("Task"))
 log_layout.addWidget(task_name_input)
