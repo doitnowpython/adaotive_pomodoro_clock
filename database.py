@@ -328,6 +328,37 @@ def initialize_task_notes():
             """
         )
 
+def initialize_task_note_groups():
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+
+        with connection:
+            connection.execute("BEGIN IMMEDIATE")
+
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS task_note_groups (
+                    id INTEGER PRIMARY KEY,
+                    task_id INTEGER NOT NULL REFERENCES tasks(id),
+                    name TEXT NOT NULL COLLATE NOCASE,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE (task_id, name)
+                )
+            """)
+
+            columns = {
+                row[1]
+                for row in connection.execute(
+                    "PRAGMA table_info(task_notes)"
+                )
+            }
+
+            if "group_id" not in columns:
+                connection.execute("""
+                    ALTER TABLE task_notes
+                    ADD COLUMN group_id INTEGER
+                        REFERENCES task_note_groups(id)
+                        ON DELETE SET NULL
+                """)
 def create_task_note(task_id, content):
     if type(task_id) is not int or task_id <= 0:
         raise ValueError("Select an existing task.")
@@ -477,6 +508,58 @@ def fetch_trashed_task_notes(task_id):
             task_id = ?
             AND deleted_at IS NOT NULL
             ORDER BY deleted_at DESC, id DESC
+            """, (task_id,)
+        ).fetchall()
+
+    return [dict(row) for row in rows]
+
+def create_task_note_group(task_id, name):
+    if type(task_id) is not int or task_id <= 0:
+        raise ValueError("Select an existing task.")
+
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError("Group name cannot be empty. ")
+
+    name = name.strip()
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+
+        with connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO task_note_groups (task_id, name)
+                VALUES (?, ?)
+                ON CONFLICT (task_id, name) DO NOTHING
+                """, (task_id, name)
+            )
+            if cursor.rowcount != 1:
+                raise ValueError(
+                    "A group with this name already exists "
+                    "for this task. "
+                )
+
+            group_id = cursor.lastrowid
+
+        return group_id
+
+def fetch_task_note_group(task_id):
+    if task_id is None:
+        return []
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.row_factory = sqlite3.Row
+
+        rows = connection.execute(
+            """
+            SELECT
+            id,
+            task_id,
+            name,
+            created_at
+            FROM task_note_groups
+            WHERE task_id = ?
+            ORDER BY name COLLATE NOCASE, id
             """, (task_id,)
         ).fetchall()
 

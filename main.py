@@ -47,7 +47,11 @@ from database import (
     update_task_note,
     trash_task_notes,
     fetch_trashed_task_notes,
-    restore_task_notes)
+    restore_task_notes,
+    initialize_task_notes,
+    initialize_task_note_groups,
+    fetch_task_note_group,
+    create_task_note_group)
 from history_window import HistoryWindow
 
 
@@ -629,6 +633,8 @@ def show_work_log():
     save_log_button.setEnabled(True)
     task_name_input.setEnabled(True)
     remarks_input.setEnabled(True)
+
+    refresh_task_note_groups()
     refresh_task_remarks()
     refresh_task_notes()
 
@@ -1850,6 +1856,92 @@ def show_task_note_trash():
 
         log_feedback_label.setText("Working note restored")
 
+def refresh_task_note_groups(selected_group_id = None):
+    task_id = task_selector.currentData()
+    previous_state = note_group_selector.blockSignals(True)
+
+    try:
+        note_group_selector.clear()
+        note_group_selector.addItem("Select a group", None)
+
+        if task_id is None:
+            return
+
+        try:
+            groups = fetch_task_note_group(task_id)
+        except sqlite3.Error as error:
+            print("Load groups error:", error)
+            note_group_selector.setItemText(
+                0, "Could not load groups"
+            )
+            return
+
+        for group in groups:
+            note_group_selector.addItem(
+                group["name"], group["id"]
+            )
+
+        if selected_group_id is not None:
+            index = note_group_selector.findData(selected_group_id)
+            if index != -1:
+                note_group_selector.setCurrentIndex(index)
+
+    finally:
+        note_group_selector.blockSignals(previous_state)
+
+def create_working_note_group():
+    task_id = task_selector.currentData()
+
+    if task_id is None:
+        QMessageBox.information(
+            log_window,
+            "Select a task",
+            "Select an existing task before creating a group."
+        )
+        return
+
+    task_name = task_selector.currentText()
+    name = ""
+
+    while True:
+        name, accepted = QInputDialog.getText(
+            log_window,
+            "Create group",
+            f"Group name for: {task_name}",
+            text = name
+        )
+
+        if not accepted:
+            return
+
+        try:
+            group_id = create_task_note_group(task_id, name)
+        except ValueError as error:
+            QMessageBox.warning(
+                log_window,
+                "Check group name",
+                str(error)
+            )
+        except sqlite3.Error as error:
+            print("Create group error:", error)
+            QMessageBox.warning(
+                log_window,
+                "Could not create group",
+                "The group was not created. "
+                "Close this message to retry. "
+            )
+        else:
+            if task_selector.currentData() == task_id:
+                refresh_task_note_groups(group_id)
+            else:
+                refresh_task_note_groups()
+
+            log_feedback_label.setText("Group created.")
+            return
+
+
+
+
 
 def on_task_selected(index):
     task_id = task_selector.itemData(index)
@@ -1861,6 +1953,7 @@ def on_task_selected(index):
         task_name_input.setText(task_selector.itemText(index))
         task_name_input.setReadOnly(True)
 
+    refresh_task_note_groups()
     refresh_task_remarks()
     refresh_task_notes()
 
@@ -1907,6 +2000,7 @@ settings = QSettings("PiyushApps", "AdaptivePomodoroClock")
 initialize_tasks()
 initialize_work_logs()
 initialize_task_notes()
+initialize_task_note_groups()
 
 
 #app window settings
@@ -2048,6 +2142,11 @@ previous_remarks_view.setPlaceholderText(
     "Select an existing task to see its previous remarks"
 )
 
+note_group_selector = QComboBox()
+note_group_selector.addItem("Select a group", None)
+
+create_note_group_button = QPushButton("Create group")
+
 working_note_selector = QComboBox()
 working_note_selector.addItem("Select a working note", None)
 
@@ -2064,6 +2163,9 @@ log_feedback_label = QLabel("Previous remarks")
 log_layout.addWidget(previous_remarks_view)
 
 log_layout.addWidget(QLabel("Working notes"))
+log_layout.addWidget(QLabel("Groups"))
+log_layout.addWidget(note_group_selector)
+log_layout.addWidget(create_note_group_button)
 log_layout.addWidget(working_note_selector)
 log_layout.addWidget(task_notes_view)
 
@@ -2122,6 +2224,9 @@ remarks_input.textChanged.connect(schedule_notes_autosave)
 task_selector.currentIndexChanged.connect(on_task_selected)
 working_note_selector.currentIndexChanged.connect(
     on_working_note_selected
+)
+create_note_group_button.clicked.connect(
+    create_working_note_group
 )
 
 
