@@ -410,28 +410,39 @@ def update_task_note(note_id,task_id,content):
                     "For this task"
                 )
 
-
-
-def fetch_task_notes(task_id):
+def fetch_task_notes(task_id, group_filter= "all"):
     if task_id is None:
         return []
 
-    with closing(sqlite3.connect(database_path)) as connection:
-        connection.row_factory = sqlite3.Row
-
-        rows = connection.execute(
-            """
-            SELECT
+    query = """
+        SELECT 
             id,
             task_id,
             content,
             created_at,
-            updated_at
-            FROM task_notes
-            WHERE task_id = ?
-            AND deleted_at IS NULL
-            ORDER BY id DESC
-            """, (task_id,)).fetchall()
+            updated_at,
+            group_id
+        FROM task_notes
+        Where task_id = ?
+        AND deleted_at IS NULL
+    """
+
+    parameters = [task_id]
+
+    if group_filter is None:
+        query += " AND group_id IS NULL"
+    elif type(group_filter) is int and group_filter > 0:
+        query += " AND group_id = ?"
+        parameters.append(group_filter)
+    elif group_filter != "all":
+        raise ValueError("Invalid group filter.")
+
+    query += " ORDER BY id DESC"
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.row_factory = sqlite3.Row
+
+        rows = connection.execute(query, parameters).fetchall()
 
     return [dict(row) for row in rows]
 

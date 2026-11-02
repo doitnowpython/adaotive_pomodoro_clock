@@ -1527,7 +1527,8 @@ def refresh_task_notes():
             return
 
         try:
-            notes = fetch_task_notes(task_id)
+            group_filter = note_group_selector.currentData()
+            notes = fetch_task_notes(task_id, group_filter)
         except sqlite3.Error as error:
             task_notes_view.setPlainText(
                 "Cloud not load working notes."
@@ -1537,7 +1538,7 @@ def refresh_task_notes():
 
         if not notes:
             task_notes_view.setPlaceholderText(
-                "No working notes for this task yet."
+                "No working notes in this view."
             )
             return
 
@@ -1601,6 +1602,7 @@ def add_working_note():
                 "Close this message to return to your text and retry."
             )
         else:
+            note_group_selector.setCurrentIndex(0)
             refresh_task_notes()
             log_feedback_label.setText("Working note saved.")
             return
@@ -1844,6 +1846,7 @@ def show_task_note_trash():
 
     if trash_dialog.exec() == QDialog.DialogCode.Accepted:
         restore_note = trash_selector.currentData()
+        note_group_selector.setCurrentIndex(0)
         refresh_task_notes()
 
         if task_selector.currentData() == task_id:
@@ -1856,13 +1859,14 @@ def show_task_note_trash():
 
         log_feedback_label.setText("Working note restored")
 
-def refresh_task_note_groups(selected_group_id = None):
+def refresh_task_note_groups(selected_group_id = "all"):
     task_id = task_selector.currentData()
     previous_state = note_group_selector.blockSignals(True)
 
     try:
         note_group_selector.clear()
-        note_group_selector.addItem("Select a group", None)
+        note_group_selector.addItem("All notes", "all")
+        note_group_selector.addItem("Ungrouped", None)
 
         if task_id is None:
             return
@@ -1871,9 +1875,7 @@ def refresh_task_note_groups(selected_group_id = None):
             groups = fetch_task_note_group(task_id)
         except sqlite3.Error as error:
             print("Load groups error:", error)
-            note_group_selector.setItemText(
-                0, "Could not load groups"
-            )
+            log_feedback_label.setText( "Could not load groups.")
             return
 
         for group in groups:
@@ -1881,10 +1883,10 @@ def refresh_task_note_groups(selected_group_id = None):
                 group["name"], group["id"]
             )
 
-        if selected_group_id is not None:
-            index = note_group_selector.findData(selected_group_id)
-            if index != -1:
-                note_group_selector.setCurrentIndex(index)
+        index = note_group_selector.findData(selected_group_id)
+
+        if index != -1:
+            note_group_selector.setCurrentIndex(index)
 
     finally:
         note_group_selector.blockSignals(previous_state)
@@ -1935,12 +1937,14 @@ def create_working_note_group():
                 refresh_task_note_groups(group_id)
             else:
                 refresh_task_note_groups()
+                refresh_task_notes()
 
             log_feedback_label.setText("Group created.")
             return
 
 
-
+def on_note_group_changed(index):
+    refresh_task_notes()
 
 
 def on_task_selected(index):
@@ -2143,7 +2147,8 @@ previous_remarks_view.setPlaceholderText(
 )
 
 note_group_selector = QComboBox()
-note_group_selector.addItem("Select a group", None)
+note_group_selector.addItem("All notes", "all")
+note_group_selector.addItem("Ungrouped", None)
 
 create_note_group_button = QPushButton("Create group")
 
@@ -2228,7 +2233,9 @@ working_note_selector.currentIndexChanged.connect(
 create_note_group_button.clicked.connect(
     create_working_note_group
 )
-
+note_group_selector.currentIndexChanged.connect(
+    on_note_group_changed
+)
 
 #saved settings
 focus_input.setValue(
