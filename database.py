@@ -575,3 +575,51 @@ def fetch_task_note_group(task_id):
         ).fetchall()
 
     return [dict(row) for row in rows]
+
+def move_task_note_to_group(note_id, task_id, group_id):
+    if type(note_id) is not int or note_id <= 0:
+        raise ValueError("Select a working note.")
+
+    if type(task_id) is not int or task_id <= 0:
+        raise ValueError("Select an existing task.")
+
+    if group_id is not None:
+        if type(group_id) is not int or group_id <= 0:
+            raise ValueError("Select a valid group or Ungrouped.")
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+
+        with connection:
+            connection.execute("BEGIN IMMEDIATE")
+
+            if group_id is not None:
+                group = connection.execute(
+                    """
+                    SELECT id
+                    FROM task_note_groups
+                    WHERE id = ?
+                    AND task_id = ?
+                    """, (group_id, task_id)
+                ).fetchone()
+
+                if group is None:
+                    raise ValueError(
+                        "This group is not available for this task."
+                    )
+
+            cursor = connection.execute(
+                """
+                UPDATE task_notes
+                SET group_id = ?
+                WHERE id = ?
+                    AND task_id = ?
+                    AND deleted_at IS NULL
+                """, (group_id,note_id, task_id)
+            )
+
+            if cursor.rowcount != 1:
+                raise ValueError(
+                    "This working note is no longer available. "
+                    "for this task."
+                )
