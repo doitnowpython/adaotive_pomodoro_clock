@@ -2026,6 +2026,13 @@ def move_selected_note_to_group():
         return
 
     if task_selector.currentData() == task_id:
+        refresh_task_note_groups(destination_id)
+    else:
+        refresh_task_note_groups()
+
+    refresh_task_notes()
+
+    if task_selector.currentData() == task_id:
         for index in range(working_note_selector.count()):
             saved_note = working_note_selector.itemData(index)
 
