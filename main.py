@@ -51,7 +51,8 @@ from database import (
     initialize_task_notes,
     initialize_task_note_groups,
     fetch_task_note_group,
-    create_task_note_group)
+    create_task_note_group,
+    move_task_note_to_group)
 from history_window import HistoryWindow
 
 
@@ -1937,14 +1938,103 @@ def create_working_note_group():
                 refresh_task_note_groups(group_id)
             else:
                 refresh_task_note_groups()
-                refresh_task_notes()
 
+            refresh_task_notes()
             log_feedback_label.setText("Group created.")
             return
 
 
 def on_note_group_changed(index):
     refresh_task_notes()
+
+def move_selected_note_to_group():
+    task_id = task_selector.currentData()
+    note = working_note_selector.currentData()
+
+    if task_id is None or note is None:
+        QMessageBox.information(
+            log_window,
+            "Select a working note",
+            "Select a task and a working note firest. "
+        )
+        return
+
+    if note["task_id"] != task_id:
+        refresh_task_notes()
+        QMessageBox.warning(
+            log_window,
+            "Select the note again",
+            "The selected note does not belong to this task."
+        )
+        return
+
+    try:
+        groups = fetch_task_note_group(task_id)
+    except sqlite3.Error as error:
+        print("Load destination groups error:", error)
+        QMessageBox.warning(
+            log_window,
+            "Could not load groups",
+            "Please try again."
+        )
+        return
+
+    labels = ["Ungrouped"]
+    destination = [None]
+
+    for group in groups:
+        labels.append(f"Group: {group['name']}")
+        destination.append(group["id"])
+
+    current_index = (
+        destination.index(note["group_id"])
+        if note["group_id"] in destination
+        else 0
+    )
+
+    selected, accepted = QInputDialog.getItem(
+        log_window,
+        "Move working note",
+        "Choose a destination :",
+        labels,
+        current_index,
+        False
+    )
+
+    if not accepted:
+        return
+
+    destination_id = destination[labels.index(selected)]
+    note_id = note["id"]
+
+    try:
+        move_task_note_to_group(note_id,task_id,destination_id)
+    except ValueError as error:
+        QMessageBox.warning(
+            log_window,
+            "Could not move note",
+            str(error)
+        )
+        return
+    except sqlite3.Error as error:
+        print("Move working note error:", error)
+        QMessageBox.warning(
+            log_window,
+            "Could not move note",
+            "The note could not be moved. Please try again."
+        )
+        return
+
+    if task_selector.currentData() == task_id:
+        for index in range(working_note_selector.count()):
+            saved_note = working_note_selector.itemData(index)
+
+            if saved_note and saved_note['id'] == note_id:
+                working_note_selector.setCurrentIndex(index)
+                break
+
+    log_feedback_label.setText("Working note moved")
+
 
 
 def on_task_selected(index):
@@ -2181,6 +2271,12 @@ add_working_note_button.clicked.connect(add_working_note)
 edit_working_note_button = QPushButton("Edit working note")
 log_layout.addWidget(edit_working_note_button)
 edit_working_note_button.clicked.connect(edit_working_note)
+
+move_note_group_button = QPushButton("Move to group")
+log_layout.addWidget(move_note_group_button)
+move_note_group_button.clicked.connect(
+    move_selected_note_to_group
+)
 
 trash_working_note_button = QPushButton("Move to Trash")
 log_layout.addWidget(trash_working_note_button)
