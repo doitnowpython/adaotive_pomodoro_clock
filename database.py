@@ -623,3 +623,54 @@ def move_task_note_to_group(note_id, task_id, group_id):
                     "This working note is no longer available. "
                     "for this task."
                 )
+
+def rename_task_note_group(group_id, task_id, name):
+    if type(group_id) is not int or group_id <= 0:
+        raise ValueError("Select an existing group.")
+
+    if type(task_id) is not int or task_id <= 0:
+        raise ValueError("Select an existing task.")
+
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError("Group name cannot be empty. ")
+
+    name = name.strip()
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+
+        with connection:
+            connection.execute("BEGIN IMMEDIATE")
+
+            duplicate = connection.execute(
+                """
+                SELECT id
+                FROM task_note_groups
+                WHERE task_id = ?
+                    AND name = ? COLLATE NOCASE
+                    AND id !=?
+                """,
+                (task_id, name, group_id)
+            ).fetchone()
+
+            if duplicate is not None:
+                raise ValueError(
+                    "A group with this name already exists "
+                    "for this task."
+                )
+
+            cursor = connection.execute(
+                """
+                UPDATE task_note_groups
+                SET name = ?
+                WHERE id = ?
+                    AND task_id = ?
+                """,
+                (name, group_id, task_id)
+            )
+
+            if cursor.rowcount != 1:
+                raise ValueError(
+                    "This group is no longer available "
+                    "for this task."
+                )

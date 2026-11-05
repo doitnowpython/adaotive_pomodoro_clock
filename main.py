@@ -52,7 +52,8 @@ from database import (
     initialize_task_note_groups,
     fetch_task_note_group,
     create_task_note_group,
-    move_task_note_to_group)
+    move_task_note_to_group,
+    rename_task_note_group)
 from history_window import HistoryWindow
 
 
@@ -1943,6 +1944,54 @@ def create_working_note_group():
             log_feedback_label.setText("Group created.")
             return
 
+def rename_working_note_group():
+    task_id = task_selector.currentData()
+    group_id = note_group_selector.currentData()
+
+    if task_id is None or type(group_id) is not int:
+        QMessageBox.information(
+            log_window,
+            "Select a group",
+            "Select an existing task and a named group. "
+            "before renaming."
+        )
+        return
+
+    name = note_group_selector.currentText()
+
+    while True:
+        name, accepted = QInputDialog.getText(
+            log_window,
+            "Rename group",
+            "New group name:",
+            text = name
+        )
+
+        if not accepted:
+            return
+
+        try:
+            rename_task_note_group(group_id,task_id, name)
+        except ValueError as error:
+            QMessageBox.warning(
+                log_window,
+                "Check group name",
+                str(error)
+            )
+        except sqlite3.Error as error:
+            print("Rename group error:", error)
+            QMessageBox.warning(
+                log_window,
+                "Could not rename group",
+                "The group was not renamed. "
+                "Close this message to retry. "
+            )
+        else:
+            current_filter = note_group_selector.currentData()
+            refresh_task_note_groups(current_filter)
+
+            log_feedback_label.setText("Group renamed.")
+            return
 
 def on_note_group_changed(index):
     refresh_task_notes()
@@ -2249,6 +2298,11 @@ note_group_selector.addItem("Ungrouped", None)
 
 create_note_group_button = QPushButton("Create group")
 
+rename_note_group_button = QPushButton("Rename group")
+rename_note_group_button.clicked.connect(
+    rename_working_note_group
+)
+
 working_note_selector = QComboBox()
 working_note_selector.addItem("Select a working note", None)
 
@@ -2268,6 +2322,7 @@ log_layout.addWidget(QLabel("Working notes"))
 log_layout.addWidget(QLabel("Groups"))
 log_layout.addWidget(note_group_selector)
 log_layout.addWidget(create_note_group_button)
+log_layout.addWidget(rename_note_group_button)
 log_layout.addWidget(working_note_selector)
 log_layout.addWidget(task_notes_view)
 
