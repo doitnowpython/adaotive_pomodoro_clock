@@ -53,7 +53,8 @@ from database import (
     fetch_task_note_group,
     create_task_note_group,
     move_task_note_to_group,
-    rename_task_note_group)
+    rename_task_note_group,
+    delete_task_note_group)
 from history_window import HistoryWindow
 
 
@@ -1993,6 +1994,61 @@ def rename_working_note_group():
             log_feedback_label.setText("Group renamed.")
             return
 
+def delete_working_note_group():
+    task_id = task_selector.currentData()
+    group_id = note_group_selector.currentData()
+
+    if task_id is None or type(group_id) is not int:
+        QMessageBox.information(
+            log_window,
+            "select a group",
+            "Select an existing task and a named group. "
+            "before deleting"
+        )
+        return
+
+    group_name = note_group_selector.currentText()
+
+    answer = QMessageBox.question(
+        log_window,
+        "Delete group",
+        f"Delete the group '{group_name}'? \n\n"
+        "Its notes will be kept and become Ungrouped. \n"
+        "Notes already in Trash will stay in Trash.",
+        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        QMessageBox.StandardButton.No
+    )
+
+    if answer != QMessageBox.StandardButton.Yes:
+        return
+
+    try:
+        delete_task_note_group(group_id, task_id)
+    except ValueError as error:
+        QMessageBox.warning(
+            log_window,
+            "Could not delete group",
+            str(error)
+        )
+        return
+    except sqlite3.Error as error:
+        print("Delete group error:", error)
+        QMessageBox.warning(
+            log_window,
+            "Could not delete group",
+            "The group was not deleted. Please try again. "
+        )
+        return
+
+    if task_selector.currentData() == task_id:
+        refresh_task_note_groups(None)
+    else:
+        refresh_task_note_groups()
+
+    refresh_task_notes()
+    log_feedback_label.setText("Group deleted. Notes preserved.")
+
+
 def on_note_group_changed(index):
     refresh_task_notes()
 
@@ -2303,6 +2359,11 @@ rename_note_group_button.clicked.connect(
     rename_working_note_group
 )
 
+delete_note_group_button = QPushButton("Delete group")
+delete_note_group_button.clicked.connect(
+    delete_working_note_group
+)
+
 working_note_selector = QComboBox()
 working_note_selector.addItem("Select a working note", None)
 
@@ -2323,6 +2384,7 @@ log_layout.addWidget(QLabel("Groups"))
 log_layout.addWidget(note_group_selector)
 log_layout.addWidget(create_note_group_button)
 log_layout.addWidget(rename_note_group_button)
+log_layout.addWidget(delete_note_group_button)
 log_layout.addWidget(working_note_selector)
 log_layout.addWidget(task_notes_view)
 

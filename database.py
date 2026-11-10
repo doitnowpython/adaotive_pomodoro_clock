@@ -674,3 +674,29 @@ def rename_task_note_group(group_id, task_id, name):
                     "This group is no longer available "
                     "for this task."
                 )
+
+def delete_task_note_group(group_id, task_id):
+    if type(group_id) is not int or group_id <= 0:
+        raise ValueError("Select an existing group.")
+
+    if type(task_id) is not int or task_id <= 0:
+        raise ValueError("Select an existing task.")
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+
+        with connection:
+            cursor = connection.execute(
+                """
+                DELETE FROM task_note_groups
+                WHERE id = ?
+                AND task_id = ?
+                """,
+                (group_id, task_id)
+            )
+
+            if cursor.rowcount != 1:
+                raise ValueError(
+                    "This group is no longer available "
+                    "for this task. "
+                )
