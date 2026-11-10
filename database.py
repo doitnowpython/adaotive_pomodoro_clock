@@ -700,3 +700,59 @@ def delete_task_note_group(group_id, task_id):
                     "This group is no longer available "
                     "for this task. "
                 )
+
+def create_task_note_from_work_log(task_id, work_log_id):
+    if type(task_id) is not int or task_id <= 0:
+        raise ValueError("Select an existing task.")
+
+    if type(work_log_id) is not int or work_log_id <= 0:
+        raise ValueError("Select a saved session remark.")
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+
+        with connection:
+            connection.execute("BEGIN IMMEDIATE")
+
+            source = connection.execute(
+                """
+                SELECT remarks
+                FROM work_logs
+                WHERE task_id = ?
+                    AND task_id = ?
+                """,
+                (work_log_id, task_id)
+            ).fetchone()
+
+            if source is None:
+                raise ValueError(
+                    "This session remarks is not available "
+                    "for this task."
+                )
+
+            content = source[0]
+
+            if not content or not content.strip():
+                raise ValueError(
+                    "This session remark is empty."
+                )
+
+            cursor = connection.execute(
+                """
+                INSERT INTO task_notes (task_id, content)
+                VALUES (?, ?)
+                """,
+                (task_id, content)
+            )
+            note_id = cursor.lastrowid
+
+            connection.execute(
+                """
+                INSERT INTO task_note_sources (
+                task_note_id,
+                work_log_id
+                ) VALUES (?, ?)
+                """,
+                (note_id, work_log_id)
+            )
+        return note_id
