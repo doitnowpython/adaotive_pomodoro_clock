@@ -54,7 +54,8 @@ from database import (
     create_task_note_group,
     move_task_note_to_group,
     rename_task_note_group,
-    delete_task_note_group)
+    delete_task_note_group,
+    create_task_note_from_work_log)
 from history_window import HistoryWindow
 
 
@@ -1471,13 +1472,19 @@ def print_plan_window():
 
 def refresh_task_remarks():
     task_id = task_selector.currentData()
+
     previous_remarks_view.clear()
+    source_remark_selector.clear()
+    source_remark_selector.addItem(
+        "Select a saved remark to copy", None
+    )
 
     if task_id is None:
         previous_remarks_view.setPlaceholderText(
             "Select an existing task to see its previous remarks."
         )
         return
+
     try:
         notes = fetch_task_remarks(task_id)
     except sqlite3.Error as  error:
@@ -1503,16 +1510,81 @@ def refresh_task_remarks():
             else "No linked session"
         )
         saved_at = note["saved_at"] or "Date unavailable"
-        remarks = note["remarks"].strip() or "(No remarks entered)"
+        remarks = note["remarks"] or ""
 
         entries.append(
             f"{session_text} | Saved: {saved_at}\n"
-            f"{remarks}"
+            f"{remarks.strip()} or '(No remarks entered)'"
+        )
+
+        if not remarks.strip():
+            continue
+
+        preview = " ".join(remarks.split())
+        if len(preview) > 60:
+            preview = preview[:60] + "..."
+
+        source_remark_selector.addItem(
+            f"Remark #{note['note_id']} | "
+            f"{session_text} | {saved_at} | {preview}",
+            note
         )
 
         previous_remarks_view.setPlainText(
             "\n\n -----------------------------------\n\n".join(entries)
         )
+
+def copy_selected_remark_to_working_note():
+    task_id = task_selector.currentData()
+    source = source_remark_selector.currentData()
+
+    if task_id is None or source is None:
+        QMessageBox.informtion(
+            log_window,
+            "Selected a saved remark",
+            "Select an existing task and a saved remark to copy."
+        )
+        return
+
+    try:
+        note_id = create_task_note_from_work_log(
+            task_id,
+            source["note_id"]
+        )
+    except ValueError as error:
+        QMessageBox.warning(
+            log_window,
+            "Could not create working note",
+            str(error)
+        )
+        return
+    except sqlite3.Error as error:
+        print("Copy session remark error:", error)
+        QMessageBox.warning(
+            log_window,
+            "Could not create working note",
+            "The working note was not created .Please try again."
+        )
+        return
+
+    if task_selector.currentData() == task_id:
+        refresh_task_note_groups(None)
+    else:
+        refresh_task_note_groups()
+
+    refresh_task_notes()
+
+    if task_selector.currentData() == task_id:
+        for index in range(working_note_selector.count()):
+            note = working_note_selector.itemData(index)
+
+            if note and note["id"] == note_id:
+                working_note_selector.setCurrentIndex(index)
+                break
+
+    log_feedback_label.setText(
+        "Working note created. Original remark preserved."
+    )
 
 def refresh_task_notes():
     task_id = task_selector.currentData()
@@ -2348,6 +2420,11 @@ previous_remarks_view.setPlaceholderText(
     "Select an existing task to see its previous remarks"
 )
 
+source_remark_selector = QComboBox()
+source_remark_selector.addItem(
+    "Select a saved remark to copy", None
+)
+
 note_group_selector = QComboBox()
 note_group_selector.addItem("All notes", "all")
 note_group_selector.addItem("Ungrouped", None)
@@ -2357,6 +2434,13 @@ create_note_group_button = QPushButton("Create group")
 rename_note_group_button = QPushButton("Rename group")
 rename_note_group_button.clicked.connect(
     rename_working_note_group
+)
+
+copy_remark_button = QPushButton(
+    "Create working note from remark"
+)
+copy_remark_button.clicked.connect(
+    copy_selected_remark_to_working_note
 )
 
 delete_note_group_button = QPushButton("Delete group")
@@ -2378,7 +2462,9 @@ log_layout.addWidget(QLabel("Existing task"))
 log_layout.addWidget(task_selector)
 log_feedback_label = QLabel("Previous remarks")
 log_layout.addWidget(previous_remarks_view)
-
+log_layout.addWidget(QLabel("Create a working note from history"))
+log_layout.addWidget(source_remark_selector)
+log_layout.addWidget(copy_remark_button)
 log_layout.addWidget(QLabel("Working notes"))
 log_layout.addWidget(QLabel("Groups"))
 log_layout.addWidget(note_group_selector)

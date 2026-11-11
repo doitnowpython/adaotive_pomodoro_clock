@@ -718,7 +718,7 @@ def create_task_note_from_work_log(task_id, work_log_id):
                 """
                 SELECT remarks
                 FROM work_logs
-                WHERE task_id = ?
+                WHERE id = ?
                     AND task_id = ?
                 """,
                 (work_log_id, task_id)
