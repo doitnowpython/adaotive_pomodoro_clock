@@ -756,3 +756,38 @@ def create_task_note_from_work_log(task_id, work_log_id):
                 (note_id, work_log_id)
             )
         return note_id
+
+def fetch_task_note_sources(note_id, task_id):
+    if type(note_id) is not int or note_id <= 0:
+        raise ValueError("Select a working note.")
+
+    if type(task_id) is not int or task_id <= 0:
+        raise ValueError("Select an existing task.")
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.row_factory = sqlite3.Row
+
+        rows = connection.execute(
+            """
+            SELECT
+                W.id AS work_log_id,
+                W.remarks,
+                w.session_id,
+                s.saved_at
+                FROM task_notes AS n
+                JOIN task_note_sources AS source
+                    ON source.task_note_id = n.id
+                JOIN work_logs AS w
+                    ON w.id = source.work_log_id
+                    AND w.task_id = n.task_id
+                LEFT JOIN sessions_records AS s
+                    ON s.id = w.session_id
+                WHERE n.id = ?
+                    AND n.task_id = ?
+                    AND n.deleted_at IS NULL
+                ORDER BY w.id DESC
+                """,
+            (note_id, task_id)
+        ).fetchall()
+
+    return [dict(row) for row in rows]
