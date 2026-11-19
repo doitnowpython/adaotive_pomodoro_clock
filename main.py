@@ -55,7 +55,8 @@ from database import (
     move_task_note_to_group,
     rename_task_note_group,
     delete_task_note_group,
-    create_task_note_from_work_log)
+    create_task_note_from_work_log,
+    fetch_task_note_sources)
 from history_window import HistoryWindow
 
 
@@ -1695,6 +1696,83 @@ def on_working_note_selected(index):
         f"Note #{note['id']}\n\n{note['content']}"
     )
 
+def show_working_note_sources():
+    task_id = task_selector.currentData()
+    note = working_note_selector.currentData()
+
+    if task_id is None or note is None:
+        QMessageBox.information(
+            log_window,
+            "Select a working note",
+            "Select a task and a working note to view its sources."
+        )
+        return
+
+    if note["task_id"] != task_id:
+        refresh_task_notes()
+        QMessageBox.warning(
+            log_window,
+            "Select the note again",
+            "The selected note does not belong to this task."
+        )
+        return
+
+    try:
+        sources = fetch_task_note_sources(note["id"], task_id)
+    except ValueError as error:
+        QMessageBox.warning(
+            log_window,
+            "Could not load sources",
+            str(error)
+        )
+        return
+    except sqlite3.Error as error:
+        QMessageBox.warning(
+            log_window,
+            "Could not load sources",
+            "Please try again"
+        )
+        return
+
+    entries = []
+    for source in sources:
+        session_id = source["session_id"]
+        session_text = (
+            f"Session #{session_id}"
+            if session_id is not None
+            else "No linked session"
+        )
+        saved_at = source["saved_at"] or "Data unavailable"
+
+        entries.append(
+            f"Original remark #{source['work_log_id']}\n"
+            f"{session_text} | Saved at {saved_at}\n\n"
+            f"{source['remarks']}"
+        )
+
+    source_dialog = QDialog(log_window)
+    source_dialog.setWindowTitle(
+        f"Sources for working note #{note['id']}"
+    )
+    source_dialog.resize(600, 400)
+
+    source_view = QTextEdit()
+    source_view.setReadOnly(True)
+    source_view.setPlainText(
+        "\n\n------------------------------------\n\n".join(entries)
+        if entries
+        else "No linked source remarks."
+    )
+
+    close_button = QPushButton("Close")
+    close_button.clicked.connect(source_dialog.accept)
+
+    source_layout = QVBoxLayout(source_dialog)
+    source_layout.addWidget(source_view)
+    source_layout.addWidget(close_button)
+
+    source_dialog.exec()
+
 def edit_working_note():
     task_id = task_selector.currentData()
     note = working_note_selector.currentData()
@@ -2481,6 +2559,12 @@ add_working_note_button.clicked.connect(add_working_note)
 edit_working_note_button = QPushButton("Edit working note")
 log_layout.addWidget(edit_working_note_button)
 edit_working_note_button.clicked.connect(edit_working_note)
+
+view_note_sources_button = QPushButton("View sources")
+view_note_sources_button.clicked.connect(
+    show_working_note_sources
+)
+log_layout.addWidget(view_note_sources_button)
 
 move_note_group_button = QPushButton("Move to group")
 log_layout.addWidget(move_note_group_button)
