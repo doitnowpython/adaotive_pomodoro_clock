@@ -791,3 +791,86 @@ def fetch_task_note_sources(note_id, task_id):
         ).fetchall()
 
     return [dict(row) for row in rows]
+
+def merge_task_notes(task_id, note_ids, content):
+        if type(task_id) is not int or task_id <= 0:
+            raise ValueError("Select an existing task.")
+
+        if not isinstance(note_ids,(list,tuple)):
+            raise ValueError("Select at least two working notes.")
+
+        if any(type(note_id) is not int or note_id <= 0 for note_id in note_ids):
+            raise ValueError("Select valid working notes.")
+
+        note_ids = list(dict.fromkeys(note_ids))
+        if len(note_ids) < 2:
+            raise ValueError("Select at least two different working notes.")
+
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError("Select at least two different working notes.")
+
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError("Merge note cannot be empty.")
+
+        placeholders = ", ".join("?" for _ in note_ids)
+        parameters = [task_id, *note_ids]
+
+        with closing(sqlite3.connect(database_path)) as connection:
+            connection.execute("PRAGMA foreign_keys = ON")
+
+            with connection:
+                connection.execute("BEGIN IMMEDIATE")
+
+                notes = connection.execute(
+                    f"""
+                    SELECT id, group_id
+                    FROM task_notes
+                    WHERE task_id = ?
+                        AND id IN ({placeholders})
+                        AND deleted_at IS NULL
+                    """,
+                parameters
+                ).fetchall()
+
+                if len(notes) != len(note_ids):
+                    raise ValueError(
+                        "Some selected notes are no longer available "
+                        " for this task. Select them again."
+                    )
+
+                groups = {row[1] for row in notes}
+                group_id = groups.pop() if len(groups) == 1 else None
+
+                cursor = connection.execute(
+                    """
+                    INSERT INTO task_notes (task_id, content, group_id)
+                    VALUES (?, ?, ?)
+                    """,
+                    (task_id, content.strip(), group_id)
+                )
+                merged_id = cursor.lastrowid
+
+                connection.execute(
+                    f"""
+                    INSERT INTO task_note_sources (
+                        task_note_id, work_log_id
+                    )
+                    SELECT DISTINCT ?, work_log_id
+                    FROM task_note_sources
+                    WHERE task_note_id IN ({placeholders})
+                    """,
+                    [merged_id, *note_ids],
+                )
+
+
+                connection.execute(
+                    f"""
+                    UPDATE task_notes
+                    SET deleted_at = CURRENT_TIMESTAMP
+                    WHERE task_id = ?
+                        AND id IN ({placeholders})
+                        AND deleted_at IS NULL
+                        """,
+                    parameters
+                )
+            return merged_id
