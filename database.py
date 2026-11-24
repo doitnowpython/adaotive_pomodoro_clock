@@ -807,10 +807,7 @@ def merge_task_notes(task_id, note_ids, content):
             raise ValueError("Select at least two different working notes.")
 
         if not isinstance(content, str) or not content.strip():
-            raise ValueError("Select at least two different working notes.")
-
-        if not isinstance(content, str) or not content.strip():
-            raise ValueError("Merge note cannot be empty.")
+            raise ValueError("Merged note cannot be empty.")
 
         placeholders = ", ".join("?" for _ in note_ids)
         parameters = [task_id, *note_ids]

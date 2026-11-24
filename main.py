@@ -18,7 +18,9 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QHBoxLayout,
     QComboBox,
-    QInputDialog)
+    QInputDialog,
+    QListWidget,
+    QListWidgetItem)
 import time
 import math
 from PySide6.QtCore import (
@@ -56,7 +58,8 @@ from database import (
     rename_task_note_group,
     delete_task_note_group,
     create_task_note_from_work_log,
-    fetch_task_note_sources)
+    fetch_task_note_sources,
+    merge_task_notes)
 from history_window import HistoryWindow
 
 
@@ -2313,6 +2316,154 @@ def on_task_selected(index):
     refresh_task_remarks()
     refresh_task_notes()
 
+def show_merge_notes_dialog():
+    task_id = task_selector.currentData()
+
+    if task_id is None:
+        QMessageBox.information(
+            log_window,
+            "Select a task",
+            "Select an existing task before merging notes."
+        )
+        return
+
+    try:
+        notes = fetch_task_notes(task_id)
+    except sqlite3.Error as error:
+        print("Load merge notes error:", error)
+        QMessageBox.warning(
+            log_window,
+            "Could not load notes",
+            "Please try again."
+        )
+        return
+
+    if len(notes) < 2:
+        QMessageBox.information(
+            log_window,
+            "More notes needed",
+            "This task needs at least two active working notes."
+        )
+        return
+
+    merge_dialog = QDialog(log_window)
+    merge_dialog.setWindowTitle("Merge working notes -- preview")
+    merge_dialog.resize(600,500)
+
+    instructions = QLabel("Tick at least two notes to combine.")
+    note_list = QListWidget()
+
+    for note in notes:
+        short_text = " ".join(note["content"].split())
+        if len(short_text) > 80:
+            short_text = short_text[:80] + "..."
+
+        item = QListWidgetItem(f"#{note['id']} - {short_text}")
+        item.setData(Qt.ItemDataRole.UserRole, note)
+        item.setFlags(
+            item.flags() | Qt.ItemFlag.ItemIsUserCheckable
+        )
+        item.setCheckState(Qt.CheckState.Unchecked)
+        note_list.addItem(item)
+
+    preview_editor = QTextEdit()
+    preview_editor.hide()
+
+    build_button = QPushButton("Build preview")
+    close_button = QPushButton("Cancel")
+    selected_notes = []
+    merged_id = []
+    save_button = QPushButton(" Save merged note")
+    save_button.setEnabled(False)
+
+    def build_preview():
+        selected_notes.clear()
+
+        for  index in range(note_list.count()):
+            item = note_list.item(index)
+            if item.checkState() == Qt.CheckState.Checked:
+                selected_notes.append(
+                    item.data(Qt.ItemDataRole.UserRole)
+                )
+
+        if len(selected_notes) < 2:
+            QMessageBox.information(
+                merge_dialog,
+                "Select more notes",
+                "Tick at least two notes. "
+            )
+            return
+
+        preview_editor.insertPlainText(
+            "\n\n".join(note["content"] for note in selected_notes)
+        )
+        note_list.setEnabled(False)
+        build_button.setEnabled(False)
+        preview_editor.show()
+        preview_editor.setFocus()
+        instructions.setText(
+            "Edit the combined text below. Saving moves the selectd"
+            "working notes to Trash and preserves thier source remarks."
+        )
+        save_button.setEnabled(True)
+
+    def save_merge():
+        nonlocal merged_id
+
+        note_ids = [note["id"] for note in selected_notes]
+        content = preview_editor.toPlainText()
+
+        try:
+            merged_id = merge_task_notes(task_id, note_ids, content)
+        except ValueError as error:
+            QMessageBox.warning(
+                merge_dialog,
+                "Could not merge notes",
+                str(error)
+            )
+            return
+        except sqlite3.Error as error:
+            print("Merge notes error:", error)
+            QMessageBox.warning(
+                merge_dialog,
+                "Could not merge notes",
+                "Your preview is still here. Please try again."
+            )
+            return
+
+        merge_dialog.accept()
+
+    build_button.clicked.connect(build_preview)
+    close_button.clicked.connect(merge_dialog.reject)
+    save_button.clicked.connect(save_merge)
+
+    merge_layout = QVBoxLayout(merge_dialog)
+    merge_layout.addWidget(instructions)
+    merge_layout.addWidget(note_list)
+    merge_layout.addWidget(build_button)
+    merge_layout.addWidget(preview_editor)
+    merge_layout.addWidget(save_button)
+    merge_layout.addWidget(close_button)
+
+    #merge_dialog.exec()
+
+    if merge_dialog.exec()  != QDialog.DialogCode.Accepted:
+        return
+
+    refresh_task_note_groups("all")
+    refresh_task_notes()
+
+    if task_selector.currentData() == task_id:
+        for index in range(note_list.count()):
+            note = working_note_selector.itemData(index)
+
+            if note and note["id"] == merged_id:
+                working_note_selector.setCurrentIndex(index)
+                break
+
+    log_feedback_label.setText(
+        "Notes merged. Previous working notes moved to Trash"
+    )
 
 
 #Simple Time conversion for refference
@@ -2565,6 +2716,10 @@ view_note_sources_button.clicked.connect(
     show_working_note_sources
 )
 log_layout.addWidget(view_note_sources_button)
+
+merge_notes_button = QPushButton("Merge working notes")
+merge_notes_button.clicked.connect(show_merge_notes_dialog)
+log_layout.addWidget(merge_notes_button)
 
 move_note_group_button = QPushButton("Move to group")
 log_layout.addWidget(move_note_group_button)
